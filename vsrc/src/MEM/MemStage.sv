@@ -4,6 +4,8 @@
 // Author      : zhao-jingyan | Date: 2026-03-10
 // ----------------------------------------------------------------------------
 
+`include "src/pipeline_pkg.sv"
+
 import common::*;
 import pipeline_pkg::*;
 

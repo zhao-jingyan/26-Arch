@@ -7,6 +7,8 @@
 `ifndef PIPELINE_PKG
 `define PIPELINE_PKG
 
+`include "src/ALU/ALU_PKG.sv"
+
 import common::*;
 import ALU_PKG::*;
 

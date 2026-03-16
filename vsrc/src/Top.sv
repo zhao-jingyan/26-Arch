@@ -4,6 +4,14 @@
 // Author      : zhao-jingyan | Date: 2026-03-10
 // ----------------------------------------------------------------------------
 
+`include "src/pipeline_pkg.sv"
+
+`include "src/HAZARD/Hazard.sv"
+`include "src/IF/FetchStage.sv"
+`include "src/DECODE/DecodeStage.sv"
+`include "src/ALU/ALUStage.sv"
+`include "src/MEM/MemStage.sv"
+
 import common::*;
 import pipeline_pkg::*;
 
@@ -20,7 +28,7 @@ module Top (
     output u64         commit_pc_o,
     output logic [31:0] commit_instr_o,
     output logic       commit_wen_o,
-    output u5          commit_wdest_o,
+    output u8          commit_wdest_o,
     output u64         commit_wdata_o,
     output u64         gpr_o [0:31]
 );
@@ -91,7 +99,7 @@ module Top (
     assign commit_pc_o     = wb.pc;
     assign commit_instr_o  = wb.inst;
     assign commit_wen_o    = wb.wen;
-    assign commit_wdest_o  = wb.rd_addr;
+    assign commit_wdest_o  = {3'b0, wb.rd_addr};  // zero-extend to 8 bits for difftest
     assign commit_wdata_o  = wb.rd_data;
 
 endmodule

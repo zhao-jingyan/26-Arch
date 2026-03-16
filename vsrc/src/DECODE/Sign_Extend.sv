@@ -31,7 +31,7 @@ module Sign_Extend (
             end
             OP_LUI, OP_AUIPC: begin
                 // U-type: [31:12] in upper, lower 12 zero
-                imm_o = {inst_i[31:12], 12'b0};
+                imm_o = {{32{inst_i[31]}}, inst_i[31:12], 12'b0};
             end
             OP_JAL: begin
                 // J-type: {[31],[19:12],[20],[30:21], 1'b0} -> sext to 64

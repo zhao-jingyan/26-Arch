@@ -4,6 +4,11 @@
 // Author      : zhao-jingyan | Date: 2026-03-10
 // ----------------------------------------------------------------------------
 
+`include "src/pipeline_pkg.sv"
+`include "src/DECODE/Decoder.sv"
+`include "src/DECODE/RegFile.sv"
+`include "src/DECODE/Sign_Extend.sv"
+
 import common::*;
 import ALU_PKG::*;
 import pipeline_pkg::*;

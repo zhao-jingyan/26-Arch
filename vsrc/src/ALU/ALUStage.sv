@@ -4,6 +4,10 @@
 // Author      : zhao-jingyan | Date: 2026-03-10
 // ----------------------------------------------------------------------------
 
+`include "src/pipeline_pkg.sv"
+`include "src/DECODE/DECODE_PKG.sv"
+`include "src/ALU/ALU_Core.sv"
+
 import common::*;
 import ALU_PKG::*;
 import DECODE_PKG::*;

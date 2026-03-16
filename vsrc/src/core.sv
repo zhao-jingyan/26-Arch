@@ -3,6 +3,8 @@
 
 `ifdef VERILATOR
 `include "include/common.sv"
+`include "src/Top.sv"
+`include "src/pipeline_pkg.sv"
 `endif
 
 module core import common::*;(
@@ -21,7 +23,7 @@ module core import common::*;(
 	word_t      commit_pc;
 	logic [31:0] commit_instr;
 	logic       commit_wen;
-	logic [4:0] commit_wdest;
+	logic [7:0] commit_wdest;
 	word_t      commit_wdata;
 	word_t      gpr [0:31];
 

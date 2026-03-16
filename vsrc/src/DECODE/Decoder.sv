@@ -14,6 +14,8 @@
 //   [31:25] funct7  (or imm in I-type, imm in S/B-type)
 //
 
+`include "src/DECODE/DECODE_PKG.sv"
+
 import common::*;
 import ALU_PKG::*;
 import DECODE_PKG::*;

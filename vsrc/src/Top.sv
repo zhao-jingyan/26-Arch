@@ -41,7 +41,9 @@ module Top (
     logic [1:0] rs1_fwd_sel;
     logic [1:0] rs2_fwd_sel;
     logic       stall;
+    logic       stall_hzd;
     logic       im_busy;
+    logic       dm_busy;
 
     Hazard u_hazard (
         .id_ex_i       ( id_ex ),
@@ -50,8 +52,10 @@ module Top (
         .im_busy_i     ( im_busy ),
         .rs1_fwd_sel_o ( rs1_fwd_sel ),
         .rs2_fwd_sel_o ( rs2_fwd_sel ),
-        .stall_o       ( stall )
+        .stall_o       ( stall_hzd )
     );
+
+    assign stall = stall_hzd || dm_busy;
 
     FetchStage u_fetch (
         .clk          ( clk ),
@@ -90,10 +94,11 @@ module Top (
         .rst_n     ( rst_n ),
         .stall_i   ( stall ),
         .ex_mem_i  ( ex_mem ),
+        .dbus_req_o( dbus_req_o ),
+        .dbus_resp_i( dbus_resp_i ),
+        .dm_busy_o ( dm_busy ),
         .wb_o      ( wb )
     );
-
-    assign dbus_req_o = '0;
 
     assign commit_valid_o  = !stall;  // commit when pipeline advances
     assign commit_pc_o     = wb.pc;

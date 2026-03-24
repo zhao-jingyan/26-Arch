@@ -28,7 +28,9 @@ module Decoder (
     output logic [4:0]  rs1_addr_o,
     output logic [4:0]  rs2_addr_o,
     output ALU_OP_CODE  alu_op_code_o,
-    output ALU_INST     alu_inst_type_o
+    output ALU_INST     alu_inst_type_o,
+    output logic        op1_is_zero_o,
+    output logic        op2_is_imm_o
 );
 
     logic [6:0]  opcode;
@@ -47,9 +49,12 @@ module Decoder (
     always_comb begin
         alu_op_code_o  = ADD;
         alu_inst_type_o = NORM;
+        op1_is_zero_o   = 1'b0;
+        op2_is_imm_o    = 1'b0;
 
         if (opcode == OP_IMM) begin
             alu_inst_type_o = NORM;
+            op2_is_imm_o    = 1'b1;
             case (funct3)
                 3'b000: alu_op_code_o = ADD;   // addi
                 3'b100: alu_op_code_o = XOR;   // xori
@@ -83,6 +88,7 @@ module Decoder (
         else if (opcode == OP_IMM32 && funct3 == 3'b000) begin
             alu_inst_type_o = WORD;
             alu_op_code_o   = ADD;   // addiw
+            op2_is_imm_o    = 1'b1;
         end
         else if (opcode == OP_32) begin
             if (funct7 == FUNCT7_M) begin
@@ -100,6 +106,33 @@ module Decoder (
                 alu_op_code_o   = funct7[5] ? SUB : ADD;  // subw / addw
             end
         end
+        else if (opcode == OP_LOAD) begin
+            alu_inst_type_o = NORM;
+            op2_is_imm_o    = 1'b1;
+            case (funct3)
+                3'b000: alu_op_code_o = ADD;   // lb / lbu
+                3'b001: alu_op_code_o = ADD;   // lh / lhu
+                3'b010: alu_op_code_o = ADD;   // lw / lwu
+                3'b011: alu_op_code_o = ADD;   // ld
+            endcase
+        end
+        else if (opcode == OP_STORE) begin
+            alu_inst_type_o = NORM;
+            op2_is_imm_o    = 1'b1;
+            case (funct3)
+                3'b000: alu_op_code_o = ADD;   // sb
+                3'b001: alu_op_code_o = ADD;   // sh
+                3'b010: alu_op_code_o = ADD;   // sw
+                3'b011: alu_op_code_o = ADD;   // sd
+            endcase
+        end
+        else if (opcode == OP_LUI) begin
+            alu_inst_type_o = NORM;
+            alu_op_code_o   = ADD;   // lui
+            op1_is_zero_o   = 1'b1;
+            op2_is_imm_o    = 1'b1;
+        end
+
     end
 
 endmodule

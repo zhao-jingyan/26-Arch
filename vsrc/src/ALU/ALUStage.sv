@@ -67,6 +67,7 @@ module ALUStage (
     assign ex_mem_d.inst    = id_ex_i.inst;
     assign ex_mem_d.rd_addr = id_ex_i.rd_addr;
     assign ex_mem_d.alu_res = alu_res;
+    assign ex_mem_d.store_data = id_ex_i.store_data;
     assign ex_mem_d.opcode  = id_ex_i.opcode;
 
     // EX/MEM pipeline reg

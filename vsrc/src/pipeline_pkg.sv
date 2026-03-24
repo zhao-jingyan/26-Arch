@@ -38,6 +38,7 @@ package pipeline_pkg;
         u5           rs2_addr;
         u64          rs1_data;
         u64          rs2_data;
+        u64          store_data;
         u64          imm;
         ALU_OP_CODE  alu_op_code;
         ALU_INST     alu_inst_type;
@@ -50,6 +51,7 @@ package pipeline_pkg;
         logic [31:0] inst;
         u5          rd_addr;
         u64         alu_res;
+        u64         store_data;
         u7          opcode;
     } ex_mem_t;
 

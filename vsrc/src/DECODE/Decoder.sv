@@ -114,6 +114,7 @@ module Decoder (
                 3'b001: alu_op_code_o = ADD;   // lh / lhu
                 3'b010: alu_op_code_o = ADD;   // lw / lwu
                 3'b011: alu_op_code_o = ADD;   // ld
+                default: ;
             endcase
         end
         else if (opcode == OP_STORE) begin
@@ -124,6 +125,7 @@ module Decoder (
                 3'b001: alu_op_code_o = ADD;   // sh
                 3'b010: alu_op_code_o = ADD;   // sw
                 3'b011: alu_op_code_o = ADD;   // sd
+                default: ;
             endcase
         end
         else if (opcode == OP_LUI) begin

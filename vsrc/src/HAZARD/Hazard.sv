@@ -19,6 +19,8 @@ module Hazard (
 
     output logic [1:0] rs1_fwd_sel_o,
     output logic [1:0] rs2_fwd_sel_o,
+    // STORE src is inst[24:20]; id_ex.rs2_addr is forced 0 for imm into ALU op2
+    output logic [1:0] store_data_fwd_sel_o,
     output logic      stall_o,
     // IF/ID/EX stall includes load-use; MEM/WB advances only on im/dm wait
     output logic      stall_wb_o
@@ -37,6 +39,7 @@ module Hazard (
         && (
                (ex_mem_i.rd_addr == id_ex_i.rs1_addr)
             || (ex_mem_i.rd_addr == id_ex_i.rs2_addr)
+            || ((id_ex_i.opcode == OP_STORE) && (ex_mem_i.rd_addr == id_ex_i.inst[24:20]))
         )
         && !load_bypass_valid_i;
 
@@ -60,6 +63,19 @@ module Hazard (
             rs2_fwd_sel_o = 2'b01;
         else if (wb_i.rd_addr == id_ex_i.rs2_addr && wb_i.wen)
             rs2_fwd_sel_o = 2'b10;
+    end
+
+    // store_data: same priority as rs2, compare architectural rs2 field
+    always_comb begin
+        store_data_fwd_sel_o = 2'b00;
+        if (id_ex_i.opcode == OP_STORE) begin
+            if (load_bypass_valid_i && ex_mem_i.rd_addr == id_ex_i.inst[24:20])
+                store_data_fwd_sel_o = 2'b11;
+            else if (ex_mem_i.rd_addr == id_ex_i.inst[24:20] && ex_mem_fwd_ok)
+                store_data_fwd_sel_o = 2'b01;
+            else if (wb_i.rd_addr == id_ex_i.inst[24:20] && wb_i.wen)
+                store_data_fwd_sel_o = 2'b10;
+        end
     end
 
     assign stall_wb_o = im_busy_i || dm_busy_i;

@@ -40,6 +40,8 @@ module Top (
 
     logic [1:0] rs1_fwd_sel;
     logic [1:0] rs2_fwd_sel;
+    logic [1:0] store_data_fwd_sel;
+
     logic       stall;
     logic       stall_wb;
     logic       im_busy;
@@ -56,6 +58,7 @@ module Top (
         .load_bypass_valid_i ( load_bypass_valid ),
         .rs1_fwd_sel_o ( rs1_fwd_sel ),
         .rs2_fwd_sel_o ( rs2_fwd_sel ),
+        .store_data_fwd_sel_o ( store_data_fwd_sel ),
         .stall_o       ( stall ),
         .stall_wb_o    ( stall_wb )
     );
@@ -90,6 +93,7 @@ module Top (
         .rs1_fwd_sel_i ( rs1_fwd_sel ),
         .load_bypass_data_i ( load_bypass_data ),
         .rs2_fwd_sel_i ( rs2_fwd_sel ),
+        .store_data_fwd_sel_i ( store_data_fwd_sel ),
         .ex_mem_o      ( ex_mem )
     );
 

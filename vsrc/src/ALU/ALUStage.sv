@@ -24,12 +24,14 @@ module ALUStage (
     input  u64         load_bypass_data_i,
     input  logic [1:0] rs1_fwd_sel_i,
     input  logic [1:0] rs2_fwd_sel_i,
+    input  logic [1:0] store_data_fwd_sel_i,
 
     output ex_mem_t    ex_mem_o
 );
 
     u64 rs1_fwd;
     u64 rs2_fwd;
+    u64 store_data_fwd;
 
     always_comb begin
         case (rs1_fwd_sel_i)
@@ -46,6 +48,15 @@ module ALUStage (
             2'b10: rs2_fwd = wb_i.rd_data;
             2'b11: rs2_fwd = load_bypass_data_i;
             default: rs2_fwd = id_ex_i.rs2_data;
+        endcase
+    end
+
+    always_comb begin
+        case (store_data_fwd_sel_i)
+            2'b01: store_data_fwd = ex_mem_i.alu_res;
+            2'b10: store_data_fwd = wb_i.rd_data;
+            2'b11: store_data_fwd = load_bypass_data_i;
+            default: store_data_fwd = id_ex_i.store_data;
         endcase
     end
 
@@ -70,7 +81,7 @@ module ALUStage (
     assign ex_mem_d.inst    = id_ex_i.inst;
     assign ex_mem_d.rd_addr = id_ex_i.rd_addr;
     assign ex_mem_d.alu_res = alu_res;
-    assign ex_mem_d.store_data = id_ex_i.store_data;
+    assign ex_mem_d.store_data = (id_ex_i.opcode == OP_STORE) ? store_data_fwd : id_ex_i.store_data;
     assign ex_mem_d.opcode  = id_ex_i.opcode;
 
     // EX/MEM pipeline reg

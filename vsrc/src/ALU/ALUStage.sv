@@ -21,6 +21,7 @@ module ALUStage (
     input  id_ex_t     id_ex_i,
     input  ex_mem_t    ex_mem_i,
     input  wb_reg_t    wb_i,
+    input  u64         load_bypass_data_i,
     input  logic [1:0] rs1_fwd_sel_i,
     input  logic [1:0] rs2_fwd_sel_i,
 
@@ -34,6 +35,7 @@ module ALUStage (
         case (rs1_fwd_sel_i)
             2'b01: rs1_fwd = ex_mem_i.alu_res;
             2'b10: rs1_fwd = wb_i.rd_data;
+            2'b11: rs1_fwd = load_bypass_data_i;
             default: rs1_fwd = id_ex_i.rs1_data;
         endcase
     end
@@ -42,6 +44,7 @@ module ALUStage (
         case (rs2_fwd_sel_i)
             2'b01: rs2_fwd = ex_mem_i.alu_res;
             2'b10: rs2_fwd = wb_i.rd_data;
+            2'b11: rs2_fwd = load_bypass_data_i;
             default: rs2_fwd = id_ex_i.rs2_data;
         endcase
     end

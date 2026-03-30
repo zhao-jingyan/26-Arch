@@ -15,42 +15,54 @@ module Hazard (
     input  wb_reg_t  wb_i,
     input  logic     im_busy_i,
     input  logic     dm_busy_i,  // DBus txn not complete (load/store)
+    input  logic     load_bypass_valid_i,
 
     output logic [1:0] rs1_fwd_sel_o,
     output logic [1:0] rs2_fwd_sel_o,
-    output logic      stall_o
+    output logic      stall_o,
+    // IF/ID/EX stall includes load-use; MEM/WB advances only on im/dm wait
+    output logic      stall_wb_o
 );
 
     logic ex_mem_wen;
-    assign ex_mem_wen = (ex_mem_i.rd_addr != 5'b0);
+    logic ex_mem_fwd_ok;  // alu_res is data, not load address
+    assign ex_mem_wen  = (ex_mem_i.rd_addr != 5'b0);
+    assign ex_mem_fwd_ok = ex_mem_wen && (ex_mem_i.opcode != OP_LOAD);
 
     // Load in EX/MEM: MEM data not ready for EX; stall if younger uses same rd as rs1/rs2
     logic load_use_stall;
+    // Stall until dbus returns; then EX uses load_bypass (2'b11), not ex_mem.alu_res
     assign load_use_stall = (ex_mem_i.opcode == OP_LOAD)
         && (ex_mem_i.rd_addr != 5'b0)
         && (
                (ex_mem_i.rd_addr == id_ex_i.rs1_addr)
             || (ex_mem_i.rd_addr == id_ex_i.rs2_addr)
-        );
+        )
+        && !load_bypass_valid_i;
 
-    // rs1: ex_mem > wb > rf
+    // rs1: load bypass > ex_mem > wb > rf (fwd_sel 2'b11 = MEM load data)
     always_comb begin
         rs1_fwd_sel_o = 2'b00;
-        if (ex_mem_i.rd_addr == id_ex_i.rs1_addr && ex_mem_wen)
+        if (load_bypass_valid_i && ex_mem_i.rd_addr == id_ex_i.rs1_addr)
+            rs1_fwd_sel_o = 2'b11;
+        else if (ex_mem_i.rd_addr == id_ex_i.rs1_addr && ex_mem_fwd_ok)
             rs1_fwd_sel_o = 2'b01;
         else if (wb_i.rd_addr == id_ex_i.rs1_addr && wb_i.wen)
             rs1_fwd_sel_o = 2'b10;
     end
 
-    // rs2: ex_mem > wb > rf
+    // rs2: load bypass > ex_mem > wb > rf
     always_comb begin
         rs2_fwd_sel_o = 2'b00;
-        if (ex_mem_i.rd_addr == id_ex_i.rs2_addr && ex_mem_wen)
+        if (load_bypass_valid_i && ex_mem_i.rd_addr == id_ex_i.rs2_addr)
+            rs2_fwd_sel_o = 2'b11;
+        else if (ex_mem_i.rd_addr == id_ex_i.rs2_addr && ex_mem_fwd_ok)
             rs2_fwd_sel_o = 2'b01;
         else if (wb_i.rd_addr == id_ex_i.rs2_addr && wb_i.wen)
             rs2_fwd_sel_o = 2'b10;
     end
 
-    assign stall_o = im_busy_i || dm_busy_i || load_use_stall;
+    assign stall_wb_o = im_busy_i || dm_busy_i;
+    assign stall_o    = stall_wb_o || load_use_stall;
 
 endmodule

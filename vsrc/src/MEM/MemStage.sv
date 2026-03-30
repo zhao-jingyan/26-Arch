@@ -15,12 +15,16 @@ import pipeline_pkg::*;
 module MemStage (
     input  logic    clk,
     input  logic    rst_n,
-    input  logic    stall_i,
+    // WB reg advances on IF/IMEM + dbus wait only, not on load-use stall
+    input  logic    stall_wb_i,
 
     input  ex_mem_t ex_mem_i,
     output dbus_req_t dbus_req_o,
     input  dbus_resp_t dbus_resp_i,
     output logic    dm_busy_o,
+    // MEM-stage bypass when load data is valid (same cycle as data_ok)
+    output logic    load_bypass_valid_o,
+    output u64      load_bypass_data_o,
 
     output wb_reg_t wb_o
 );
@@ -57,8 +61,26 @@ module MemStage (
 
     assign dm_busy_o = (is_load || is_store) && !dbus_resp_i.data_ok;
 
-    assign mem_wb_d.wen     = is_load ? ((ex_mem_i.rd_addr != 5'b0) && dbus_resp_i.data_ok)
-                                      : ((ex_mem_i.rd_addr != 5'b0) && !is_store);
+    assign load_bypass_valid_o = is_load && dbus_resp_i.data_ok && (ex_mem_i.rd_addr != 5'b0);
+    assign load_bypass_data_o  = load_data_ext;
+
+    // One load commit per instruction even if data_ok stays asserted
+    logic load_result_committed_q;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            load_result_committed_q <= 1'b0;
+        else begin
+            if (!is_load)
+                load_result_committed_q <= 1'b0;
+            else if (!stall_wb_i && dbus_resp_i.data_ok && !load_result_committed_q)
+                load_result_committed_q <= 1'b1;
+        end
+    end
+
+    assign mem_wb_d.wen     = is_load
+        ? ((ex_mem_i.rd_addr != 5'b0) && dbus_resp_i.data_ok && !load_result_committed_q)
+        : ((ex_mem_i.rd_addr != 5'b0) && !is_store);
     assign mem_wb_d.rd_addr = ex_mem_i.rd_addr;
     assign mem_wb_d.rd_data = is_load ? load_data_ext : ex_mem_i.alu_res;
     assign mem_wb_d.pc      = ex_mem_i.pc;
@@ -68,7 +90,7 @@ module MemStage (
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wb_o <= '0;
-        end else if (!stall_i) begin
+        end else if (!stall_wb_i) begin
             wb_o <= mem_wb_d;
         end
     end

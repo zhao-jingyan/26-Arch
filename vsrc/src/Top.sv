@@ -41,8 +41,11 @@ module Top (
     logic [1:0] rs1_fwd_sel;
     logic [1:0] rs2_fwd_sel;
     logic       stall;
+    logic       stall_wb;
     logic       im_busy;
     logic       dm_busy;
+    logic       load_bypass_valid;
+    u64         load_bypass_data;
 
     Hazard u_hazard (
         .id_ex_i       ( id_ex ),
@@ -50,9 +53,11 @@ module Top (
         .wb_i          ( wb ),
         .im_busy_i     ( im_busy ),
         .dm_busy_i     ( dm_busy ),
+        .load_bypass_valid_i ( load_bypass_valid ),
         .rs1_fwd_sel_o ( rs1_fwd_sel ),
         .rs2_fwd_sel_o ( rs2_fwd_sel ),
-        .stall_o       ( stall )
+        .stall_o       ( stall ),
+        .stall_wb_o    ( stall_wb )
     );
 
     FetchStage u_fetch (
@@ -83,6 +88,7 @@ module Top (
         .ex_mem_i      ( ex_mem ),
         .wb_i          ( wb ),
         .rs1_fwd_sel_i ( rs1_fwd_sel ),
+        .load_bypass_data_i ( load_bypass_data ),
         .rs2_fwd_sel_i ( rs2_fwd_sel ),
         .ex_mem_o      ( ex_mem )
     );
@@ -90,11 +96,13 @@ module Top (
     MemStage u_mem (
         .clk       ( clk ),
         .rst_n     ( rst_n ),
-        .stall_i   ( stall ),
+        .stall_wb_i( stall_wb ),
         .ex_mem_i  ( ex_mem ),
         .dbus_req_o( dbus_req_o ),
         .dbus_resp_i( dbus_resp_i ),
         .dm_busy_o ( dm_busy ),
+        .load_bypass_valid_o ( load_bypass_valid ),
+        .load_bypass_data_o  ( load_bypass_data ),
         .wb_o      ( wb )
     );
 

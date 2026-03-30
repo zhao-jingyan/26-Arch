@@ -5,6 +5,7 @@
 // ----------------------------------------------------------------------------
 
 import common::*;
+import DECODE_PKG::*;
 import pipeline_pkg::*;
 
 // fwd_sel: 2'b00 = RegFile, 2'b01 = ex_mem, 2'b10 = wb
@@ -22,6 +23,15 @@ module Hazard (
 
     logic ex_mem_wen;
     assign ex_mem_wen = (ex_mem_i.rd_addr != 5'b0);
+
+    // Load in EX/MEM: MEM data not ready for EX; stall if younger uses same rd as rs1/rs2
+    logic load_use_stall;
+    assign load_use_stall = (ex_mem_i.opcode == OP_LOAD)
+        && (ex_mem_i.rd_addr != 5'b0)
+        && (
+               (ex_mem_i.rd_addr == id_ex_i.rs1_addr)
+            || (ex_mem_i.rd_addr == id_ex_i.rs2_addr)
+        );
 
     // rs1: ex_mem > wb > rf
     always_comb begin
@@ -41,6 +51,6 @@ module Hazard (
             rs2_fwd_sel_o = 2'b10;
     end
 
-    assign stall_o = im_busy_i || dm_busy_i;  // IF or DBus wait; TODO: load_use_stall
+    assign stall_o = im_busy_i || dm_busy_i || load_use_stall;
 
 endmodule

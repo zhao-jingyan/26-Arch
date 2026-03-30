@@ -37,19 +37,23 @@ module Top (
     id_ex_t  id_ex;
     ex_mem_t ex_mem;
     wb_reg_t wb;
+    wb_reg_t wb_prev_q;
 
     logic [1:0] rs1_fwd_sel;
     logic [1:0] rs2_fwd_sel;
     logic [1:0] store_data_fwd_sel;
 
-    logic       stall;
-    logic       stall_wb;
+    logic       stall_front;
+    logic       stall_back;
+    logic       stall_if_issue_block;
     logic       im_busy;
     logic       dm_busy;
     logic       load_bypass_valid;
     u64         load_bypass_data;
 
     Hazard u_hazard (
+        .clk           ( clk ),
+        .rst_n         ( rst_n ),
         .id_ex_i       ( id_ex ),
         .ex_mem_i      ( ex_mem ),
         .wb_i          ( wb ),
@@ -59,14 +63,16 @@ module Top (
         .rs1_fwd_sel_o ( rs1_fwd_sel ),
         .rs2_fwd_sel_o ( rs2_fwd_sel ),
         .store_data_fwd_sel_o ( store_data_fwd_sel ),
-        .stall_o       ( stall ),
-        .stall_wb_o    ( stall_wb )
+        .stall_front_o ( stall_front ),
+        .stall_back_o  ( stall_back ),
+        .stall_if_issue_block_o ( stall_if_issue_block )
     );
 
     FetchStage u_fetch (
         .clk          ( clk ),
         .rst_n        ( rst_n ),
-        .stall_i      ( stall ),
+        .stall_front_i( stall_front ),
+        .stall_if_issue_block_i ( stall_if_issue_block ),
         .if_id_o      ( if_id ),
         .im_busy_o    ( im_busy ),
         .ibus_req_o   ( ibus_req_o ),
@@ -76,7 +82,7 @@ module Top (
     DecodeStage u_decode (
         .clk      ( clk ),
         .rst_n    ( rst_n ),
-        .stall_i  ( stall ),
+        .stall_front_i( stall_front ),
         .if_id_i  ( if_id ),
         .wb_i     ( wb ),
         .id_ex_o  ( id_ex ),
@@ -86,7 +92,7 @@ module Top (
     ALUStage u_alu (
         .clk           ( clk ),
         .rst_n         ( rst_n ),
-        .stall_i       ( stall ),
+        .stall_front_i ( stall_front ),
         .id_ex_i       ( id_ex ),
         .ex_mem_i      ( ex_mem ),
         .wb_i          ( wb ),
@@ -100,7 +106,8 @@ module Top (
     MemStage u_mem (
         .clk       ( clk ),
         .rst_n     ( rst_n ),
-        .stall_wb_i( stall_wb ),
+        .stall_front_i( stall_front ),
+        .stall_back_i( stall_back ),
         .ex_mem_i  ( ex_mem ),
         .dbus_req_o( dbus_req_o ),
         .dbus_resp_i( dbus_resp_i ),
@@ -110,11 +117,20 @@ module Top (
         .wb_o      ( wb )
     );
 
-    assign commit_valid_o  = !stall;  // commit when pipeline advances
-    assign commit_pc_o     = wb.pc;
-    assign commit_instr_o  = wb.inst;
-    assign commit_wen_o    = wb.wen;
-    assign commit_wdest_o  = {3'b0, wb.rd_addr};  // zero-extend to 8 bits for difftest
-    assign commit_wdata_o  = wb.rd_data;
+    // Retire previous WB slot when wb advances; aligns difftest with RegFile seeing retiring insn.
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            wb_prev_q <= '0;
+        else
+            wb_prev_q <= wb;
+    end
+
+    assign commit_valid_o  = (wb_prev_q.inst != 32'b0)
+        && ((wb.pc != wb_prev_q.pc) || (wb.inst != wb_prev_q.inst));
+    assign commit_pc_o     = wb_prev_q.pc;
+    assign commit_instr_o  = wb_prev_q.inst;
+    assign commit_wen_o    = wb_prev_q.wen;
+    assign commit_wdest_o  = {3'b0, wb_prev_q.rd_addr};
+    assign commit_wdata_o  = wb_prev_q.rd_data;
 
 endmodule

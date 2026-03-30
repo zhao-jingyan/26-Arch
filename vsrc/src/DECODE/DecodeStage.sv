@@ -18,7 +18,7 @@ import pipeline_pkg::*;
 module DecodeStage (
     input logic clk,
     input logic rst_n,
-    input logic stall_i,
+    input logic stall_front_i,
 
     input  if_id_t    if_id_i,
     input  wb_reg_t   wb_i,
@@ -100,7 +100,7 @@ module DecodeStage (
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             id_ex_o <= '0;
-        end else if (!stall_i) begin
+        end else if (!stall_front_i) begin
             id_ex_o.pc           <= if_id_i.pc;
             id_ex_o.inst         <= if_id_i.inst;
             id_ex_o.rd_addr      <= rd_addr;

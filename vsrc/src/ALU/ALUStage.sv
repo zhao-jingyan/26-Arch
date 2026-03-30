@@ -16,7 +16,7 @@ import pipeline_pkg::*;
 module ALUStage (
     input  logic       clk,
     input  logic       rst_n,
-    input  logic       stall_i,
+    input  logic       stall_front_i,
 
     input  id_ex_t     id_ex_i,
     input  ex_mem_t    ex_mem_i,
@@ -88,7 +88,7 @@ module ALUStage (
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             ex_mem_o <= '0;
-        end else if (!stall_i) begin
+        end else if (!stall_front_i) begin
             ex_mem_o <= ex_mem_d;
         end
     end

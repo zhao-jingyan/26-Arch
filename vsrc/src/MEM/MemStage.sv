@@ -15,8 +15,8 @@ import pipeline_pkg::*;
 module MemStage (
     input  logic    clk,
     input  logic    rst_n,
-    // WB reg advances on IF/IMEM + dbus wait only, not on load-use stall
-    input  logic    stall_wb_i,
+    input  logic    stall_front_i,
+    input  logic    stall_back_i,
 
     input  ex_mem_t ex_mem_i,
     output dbus_req_t dbus_req_o,
@@ -37,10 +37,22 @@ module MemStage (
     logic [7:0] store_strobe;
     logic [63:0] load_data_ext;
     msize_t req_size;
+    logic is_mem;
+    logic mem_req_pending_q;
+    logic mem_req_done_q;
+    logic mem_inst_same;
+    u64   load_data_q;
+    u64   mem_pc_q;
+    logic [31:0] mem_inst_q;
+    u7    mem_opcode_q;
 
     assign is_load  = (ex_mem_i.opcode == OP_LOAD);
     assign is_store = (ex_mem_i.opcode == OP_STORE);
+    assign is_mem   = is_load || is_store;
     assign funct3   = ex_mem_i.inst[14:12];
+    assign mem_inst_same = (ex_mem_i.pc == mem_pc_q)
+                        && (ex_mem_i.inst == mem_inst_q)
+                        && (ex_mem_i.opcode == mem_opcode_q);
     
     MemDataAlign u_mem_data_align (
         .funct3_i     ( funct3 ),
@@ -53,36 +65,55 @@ module MemStage (
         .load_data_o  ( load_data_ext )
     );
 
-    assign dbus_req_o.valid  = is_load || is_store;
+    assign dbus_req_o.valid  = is_mem && mem_req_pending_q;
     assign dbus_req_o.addr   = ex_mem_i.alu_res;
     assign dbus_req_o.size   = req_size;
     assign dbus_req_o.strobe = is_store ? store_strobe : 8'b0;
     assign dbus_req_o.data   = is_store ? store_wdata : 64'b0;
 
-    assign dm_busy_o = (is_load || is_store) && !dbus_resp_i.data_ok;
-
-    assign load_bypass_valid_o = is_load && dbus_resp_i.data_ok && (ex_mem_i.rd_addr != 5'b0);
+    assign dm_busy_o = is_mem && !(mem_req_done_q || (mem_req_pending_q && dbus_resp_i.data_ok));
+    assign load_bypass_valid_o = is_load && mem_req_pending_q && dbus_resp_i.data_ok && (ex_mem_i.rd_addr != 5'b0);
     assign load_bypass_data_o  = load_data_ext;
 
-    // One load commit per instruction even if data_ok stays asserted
-    logic load_result_committed_q;
-
+    // Keep one in-flight memory request for current EX/MEM instruction.
     always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
-            load_result_committed_q <= 1'b0;
+        if (!rst_n) begin
+            mem_req_pending_q <= 1'b0;
+            mem_req_done_q    <= 1'b0;
+            load_data_q       <= '0;
+            mem_pc_q          <= '0;
+            mem_inst_q        <= '0;
+            mem_opcode_q      <= '0;
+        end
         else begin
-            if (!is_load)
-                load_result_committed_q <= 1'b0;
-            else if (!stall_wb_i && dbus_resp_i.data_ok && !load_result_committed_q)
-                load_result_committed_q <= 1'b1;
+            mem_pc_q     <= ex_mem_i.pc;
+            mem_inst_q   <= ex_mem_i.inst;
+            mem_opcode_q <= ex_mem_i.opcode;
+
+            if (!is_mem) begin
+                mem_req_pending_q <= 1'b0;
+                mem_req_done_q    <= 1'b0;
+            end else if (!mem_inst_same) begin
+                mem_req_pending_q <= 1'b1;
+                mem_req_done_q    <= 1'b0;
+            end else if (mem_req_pending_q && dbus_resp_i.data_ok) begin
+                mem_req_pending_q <= 1'b0;
+                mem_req_done_q    <= 1'b1;
+                load_data_q       <= load_data_ext;
+            end
         end
     end
 
+    // Load: data_ok is comb; mem_req_done_q updates next edge. Same edge ex_mem may advance once
+    // dm_busy drops, so capture wb using pending&&data_ok here (else load writeback is lost).
     assign mem_wb_d.wen     = is_load
-        ? ((ex_mem_i.rd_addr != 5'b0) && dbus_resp_i.data_ok && !load_result_committed_q)
+        ? ((ex_mem_i.rd_addr != 5'b0)
+            && (mem_req_done_q || (mem_req_pending_q && dbus_resp_i.data_ok)))
         : ((ex_mem_i.rd_addr != 5'b0) && !is_store);
     assign mem_wb_d.rd_addr = ex_mem_i.rd_addr;
-    assign mem_wb_d.rd_data = is_load ? load_data_ext : ex_mem_i.alu_res;
+    assign mem_wb_d.rd_data = is_load
+        ? ((mem_req_pending_q && dbus_resp_i.data_ok) ? load_data_ext : load_data_q)
+        : ex_mem_i.alu_res;
     assign mem_wb_d.pc      = ex_mem_i.pc;
     assign mem_wb_d.inst    = ex_mem_i.inst;
 
@@ -90,7 +121,7 @@ module MemStage (
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wb_o <= '0;
-        end else if (!stall_wb_i) begin
+        end else if (!stall_back_i && !stall_front_i) begin
             wb_o <= mem_wb_d;
         end
     end

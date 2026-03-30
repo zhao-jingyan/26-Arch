@@ -41,7 +41,6 @@ module Top (
     logic [1:0] rs1_fwd_sel;
     logic [1:0] rs2_fwd_sel;
     logic       stall;
-    logic       stall_hzd;
     logic       im_busy;
     logic       dm_busy;
 
@@ -50,12 +49,11 @@ module Top (
         .ex_mem_i      ( ex_mem ),
         .wb_i          ( wb ),
         .im_busy_i     ( im_busy ),
+        .dm_busy_i     ( dm_busy ),
         .rs1_fwd_sel_o ( rs1_fwd_sel ),
         .rs2_fwd_sel_o ( rs2_fwd_sel ),
-        .stall_o       ( stall_hzd )
+        .stall_o       ( stall )
     );
-
-    assign stall = stall_hzd || dm_busy;
 
     FetchStage u_fetch (
         .clk          ( clk ),

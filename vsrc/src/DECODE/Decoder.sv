@@ -41,8 +41,9 @@ module Decoder (
     assign funct3    = inst_i[14:12];
     assign funct7    = inst_i[31:25];
 
-    assign opcode_o    = opcode;
-    assign rd_addr_o   = inst_i[11:7];
+    assign opcode_o = opcode;
+    // [11:7] is rd for R/I/U/J; S/B encode imm bits here (no architectural rd)
+    assign rd_addr_o = ((opcode == OP_STORE) || (opcode == OP_BRANCH)) ? 5'b0 : inst_i[11:7];
     assign rs1_addr_o  = inst_i[19:15];
     assign rs2_addr_o  = inst_i[24:20];
 

@@ -89,7 +89,9 @@ module Fetch_Data (
         endcase
     end
 
-    // 单槽 latch：记录本指令访存是否已完成
+    // 单槽 latch：记录"当前停留在 MEM 的指令"已完成访存的 load 数据
+    // 关键：仅靠 (pc, inst) 比对不能区分循环里的「同 PC 不同实例」，
+    //   必须在持有 latch 的指令离开 MEM 时主动失效，否则下次同 PC 进入会命中陈旧值
     u64   latched_pc;
     u32   latched_inst;
     u64   latched_data;
@@ -112,11 +114,19 @@ module Fetch_Data (
             latched_data  <= '0;
             latched_valid <= 1'b0;
         end
+        // 本拍响应回来（且尚未 latch）→ 覆盖式 latch 当前 pc/inst/data
+        // 同时也覆盖了「上一条 mem 指令离开后 latch 残留」的清理需求
         else if (is_response_valid && !is_mem_ready) begin
             latched_pc    <= pc_inst_address;
             latched_inst  <= inst;
             latched_data  <= load_data_ext;  // store 不使用此字段
             latched_valid <= 1'b1;
+        end
+        // 持 latch 的指令已离开 MEM（本拍 pc/inst 与 latch 不同）→ 让 latch 失效
+        // 防止循环中同 PC 再次进入时误命中陈旧 latched_data
+        else if (latched_valid
+                 && ((latched_pc != pc_inst_address) || (latched_inst != inst))) begin
+            latched_valid <= 1'b0;
         end
     end
 

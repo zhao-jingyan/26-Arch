@@ -7,7 +7,7 @@
 //               IF/ID 化为 distance-2，下一拍走 MEM_2_FWD 路径
 // ----------------------------------------------------------------------------
 
-`include "src_new/top_pkg.sv"
+`include "src/top_pkg.sv"
 
 import common::*;
 import top_pkg::*;

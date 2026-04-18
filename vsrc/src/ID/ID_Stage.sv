@@ -4,10 +4,10 @@
 //               ID 不做 op1/op2 mux（v2 规约：mux 在 EX 做）
 // ----------------------------------------------------------------------------
 
-`include "src_new/top_pkg.sv"
-`include "src_new/ID/Decoder.sv"
-`include "src_new/ID/RegFile.sv"
-`include "src_new/ID/Sign_Extend.sv"
+`include "src/top_pkg.sv"
+`include "src/ID/Decoder.sv"
+`include "src/ID/RegFile.sv"
+`include "src/ID/Sign_Extend.sv"
 
 import common::*;
 import top_pkg::*;

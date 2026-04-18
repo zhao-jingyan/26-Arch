@@ -6,7 +6,7 @@
 `ifndef TOP_PKG
 `define TOP_PKG
 
-`include "src_new/EX/EX_PKG.sv"
+`include "src/EX/EX_PKG.sv"
 
 import common::*;
 import EX_PKG::*;

@@ -5,7 +5,7 @@
 //               JALR     : target = (rs1 + imm) & ~1
 // ----------------------------------------------------------------------------
 
-`include "src_new/EX/EX_PKG.sv"
+`include "src/EX/EX_PKG.sv"
 
 import common::*;
 import EX_PKG::*;

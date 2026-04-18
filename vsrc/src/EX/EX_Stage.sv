@@ -5,11 +5,11 @@
 //               pc_should_jump / pc_jump_address 为组合直出，当拍反馈给 IF
 // ----------------------------------------------------------------------------
 
-`include "src_new/top_pkg.sv"
-`include "src_new/ID/ID_PKG.sv"
-`include "src_new/EX/ALU_Core.sv"
-`include "src_new/EX/Branch_Unit.sv"
-`include "src_new/EX/PC_Target.sv"
+`include "src/top_pkg.sv"
+`include "src/ID/ID_PKG.sv"
+`include "src/EX/ALU_Core.sv"
+`include "src/EX/Branch_Unit.sv"
+`include "src/EX/PC_Target.sv"
 
 import common::*;
 import top_pkg::*;

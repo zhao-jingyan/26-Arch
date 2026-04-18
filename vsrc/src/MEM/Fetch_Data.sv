@@ -3,7 +3,7 @@
 // Description : 访存单元；funct3 字节对齐 + 单槽 latch，驱动 DataMemory 请求 dbus
 // ----------------------------------------------------------------------------
 
-`include "src_new/MEM/DataMemory.sv"
+`include "src/MEM/DataMemory.sv"
 
 import common::*;
 

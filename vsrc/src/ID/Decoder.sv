@@ -3,8 +3,8 @@
 // Description : RISC-V 指令字译码；纯组合。输出 ALU 控制 + 分支/跳转/rd 源 flag
 // ----------------------------------------------------------------------------
 
-`include "src_new/ID/ID_PKG.sv"
-`include "src_new/EX/EX_PKG.sv"
+`include "src/ID/ID_PKG.sv"
+`include "src/EX/EX_PKG.sv"
 
 import common::*;
 import ID_PKG::*;

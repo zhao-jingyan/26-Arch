@@ -4,9 +4,9 @@
 //               is_mem_ready 为裸端口反馈忙状态，未来并入控制层
 // ----------------------------------------------------------------------------
 
-`include "src_new/top_pkg.sv"
-`include "src_new/ID/ID_PKG.sv"
-`include "src_new/MEM/Fetch_Data.sv"
+`include "src/top_pkg.sv"
+`include "src/ID/ID_PKG.sv"
+`include "src/MEM/Fetch_Data.sv"
 
 import common::*;
 import top_pkg::*;

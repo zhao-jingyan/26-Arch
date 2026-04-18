@@ -4,7 +4,7 @@
 //               NORM = 全 64-bit；WORD = 低 32-bit 运算结果 sext 回 64
 // ----------------------------------------------------------------------------
 
-`include "src_new/EX/EX_PKG.sv"
+`include "src/EX/EX_PKG.sv"
 
 import common::*;
 import EX_PKG::*;

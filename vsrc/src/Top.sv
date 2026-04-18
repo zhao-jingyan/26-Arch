@@ -1,20 +1,23 @@
 // ----------------------------------------------------------------------------
 // File        : Top.sv
-// Description : Five-stage pipeline: IF, ID, EX, MEM, WB
-// Author      : zhao-jingyan | Date: 2026-03-10
+// Description : v2 五段流水线顶层：IF → ID → EX → MEM → WB + Control_Unit
+//               对外接口保持与 v1 Top 一致（ibus/dbus/commit/gpr），供 core.sv 使用
+//               commit 信号按 v1 做法：MEM/WB 寄存器 + 1-cycle prev 比较，检测"推进"沿
 // ----------------------------------------------------------------------------
 
-`include "src/pipeline_pkg.sv"
-
-`include "src/IF/FetchStage.sv"
-`include "src/DECODE/DecodeStage.sv"
-`include "src/ALU/BypassOperandMux.sv"
-`include "src/ALU/ALUStage.sv"
-`include "src/MEM/MemStage.sv"
+`include "src/top_pkg.sv"
+`include "src/ID/ID_PKG.sv"
+`include "src/IF/IF_Stage.sv"
+`include "src/ID/ID_Stage.sv"
+`include "src/EX/EX_Stage.sv"
+`include "src/MEM/MEM_Stage.sv"
+`include "src/WB/WB_Stage.sv"
+`include "src/CTRL/Control_Unit.sv"
+`include "src/CTRL/Forward_Unit.sv"
 
 import common::*;
-import DECODE_PKG::*;
-import pipeline_pkg::*;
+import top_pkg::*;
+import ID_PKG::*;
 
 module Top (
     input  logic       clk,
@@ -27,144 +30,187 @@ module Top (
 
     output logic       commit_valid_o,
     output u64         commit_pc_o,
-    output logic [31:0] commit_instr_o,
+    output u32         commit_instr_o,
     output logic       commit_wen_o,
     output u8          commit_wdest_o,
     output u64         commit_wdata_o,
+    output logic       commit_skip_o,   // 外设 MMIO 访存跳过 Difftest 对账
     output u64         gpr_o [0:31]
 );
 
-    if_id_t       if_id;
-    decoder_out_t decoder_out;
-    alu_input_t   alu_input;
-    alu_out_t     alu_out;
-    wb_reg_t wb;
-    wb_reg_t wb_prev_q;
+    // ------------------------------------------------------------------------
+    // Stage-to-stage bundles
+    // ------------------------------------------------------------------------
+    IF_2_ID   if_2_id;
+    IF_2_CTRL if_2_ctrl;
 
-    logic       stall_front;
-    logic       stall_back;
-    logic       stall_if_issue_block;
-    logic       stall_if_issue_block_q;
-    logic       im_busy;
-    logic       dm_busy;
-    logic       load_bypass_valid;
-    u64         load_bypass_data;
+    INST_CTX  id_inst_ctx;
+    ID_2_EX   id_2_ex;
+    ID_2_FWD  id_2_fwd;
+    ID_2_CTRL id_2_ctrl;
 
-    logic       rs1_used;
-    logic       rs2_used;
-    logic       store_src_used;
-    logic       load_use_stall;
+    INST_CTX  ex_inst_ctx;
+    EX_2_MEM  ex_2_mem;
+    EX_2_FWD  ex_2_fwd;
+    EX_2_CTRL ex_2_ctrl;
 
-    u64         alu_op1_val;
-    u64         alu_op2_val;
-    u64         alu_store_val;
+    INST_CTX  mem_inst_ctx;
+    MEM_2_WB  mem_2_wb;
+    MEM_2_FWD mem_2_fwd;
 
-    assign rs1_used       = (decoder_out.rs1_addr != 5'b0);
-    assign rs2_used       = (decoder_out.rs2_addr != 5'b0);
-    assign store_src_used = (decoder_out.opcode == OP_STORE) && (decoder_out.inst[24:20] != 5'b0);
-    assign load_use_stall  = (alu_out.ctx.opcode == OP_LOAD)
-                           && (alu_out.ctx.rd_addr != 5'b0)
-                           && (
-                                  (rs1_used && (alu_out.ctx.rd_addr == decoder_out.rs1_addr))
-                               || (rs2_used && (alu_out.ctx.rd_addr == decoder_out.rs2_addr))
-                               || (store_src_used && (alu_out.ctx.rd_addr == decoder_out.inst[24:20]))
-                              )
-                           && !load_bypass_valid;
+    FWD_2_EX  fwd_2_ex;
 
-    assign stall_front = im_busy || dm_busy || load_use_stall;
-    assign stall_back  = dm_busy;
+    WB_2_ID   wb_2_id;
+
+    // EX / MEM 对控制层的裸端口反馈
+    logic ex_pc_should_jump;
+    u64   ex_pc_jump_address;
+    logic is_mem_ready;
+
+    // 控制层输出
+    logic stall_if, stall_id, stall_ex, stall_mem;
+    logic insert_bubble;
+    logic flush_if_id;
+    logic pc_should_jump;
+    u64   pc_jump_address;
+
+    Forward_Unit u_fwd (
+        .id_2_fwd  ( id_2_fwd ),
+        .ex_2_fwd  ( ex_2_fwd ),
+        .mem_2_fwd ( mem_2_fwd ),
+
+        .fwd_2_ex  ( fwd_2_ex )
+    );
+
+    Control_Unit u_ctrl (
+        .if_2_ctrl          ( if_2_ctrl ),
+        .id_2_ctrl          ( id_2_ctrl ),
+        .ex_2_ctrl          ( ex_2_ctrl ),
+        .is_mem_ready       ( is_mem_ready ),
+
+        .ex_pc_should_jump  ( ex_pc_should_jump ),
+        .ex_pc_jump_address ( ex_pc_jump_address ),
+
+        .stall_if           ( stall_if ),
+        .stall_id           ( stall_id ),
+        .stall_ex           ( stall_ex ),
+        .stall_mem          ( stall_mem ),
+        .insert_bubble      ( insert_bubble ),
+        .flush_if_id        ( flush_if_id ),
+
+        .pc_should_jump     ( pc_should_jump ),
+        .pc_jump_address    ( pc_jump_address )
+    );
+
+    IF_Stage u_if (
+        .clk             ( clk ),
+        .rst_n           ( rst_n ),
+
+        .stall           ( stall_if ),
+        .flush           ( flush_if_id ),
+        .pc_should_jump  ( pc_should_jump ),
+        .pc_jump_address ( pc_jump_address ),
+
+        .if_2_id         ( if_2_id ),
+        .if_2_ctrl       ( if_2_ctrl ),
+
+        .ibus_request    ( ibus_req_o ),
+        .ibus_response   ( ibus_resp_i )
+    );
+
+    ID_Stage u_id (
+        .clk           ( clk ),
+        .rst_n         ( rst_n ),
+
+        .stall         ( stall_id ),
+        .insert_bubble ( insert_bubble ),
+        .if_2_id       ( if_2_id ),
+        .wb_2_id       ( wb_2_id ),
+
+        .inst_ctx      ( id_inst_ctx ),
+        .id_2_ex       ( id_2_ex ),
+        .id_2_fwd      ( id_2_fwd ),
+        .gpr           ( gpr_o ),
+        .id_2_ctrl     ( id_2_ctrl )
+    );
+
+    EX_Stage u_ex (
+        .clk             ( clk ),
+        .rst_n           ( rst_n ),
+
+        .stall           ( stall_ex ),
+
+        .inst_ctx_in     ( id_inst_ctx ),
+        .id_2_ex         ( id_2_ex ),
+        .fwd_2_ex        ( fwd_2_ex ),
+
+        .inst_ctx_out    ( ex_inst_ctx ),
+        .ex_2_mem        ( ex_2_mem ),
+        .ex_2_fwd        ( ex_2_fwd ),
+        .ex_2_ctrl       ( ex_2_ctrl ),
+
+        .pc_should_jump  ( ex_pc_should_jump ),
+        .pc_jump_address ( ex_pc_jump_address )
+    );
+
+    MEM_Stage u_mem (
+        .clk           ( clk ),
+        .rst_n         ( rst_n ),
+
+        .stall         ( stall_mem ),
+
+        .inst_ctx_in   ( ex_inst_ctx ),
+        .ex_2_mem      ( ex_2_mem ),
+
+        .inst_ctx_out  ( mem_inst_ctx ),
+        .mem_2_wb      ( mem_2_wb ),
+        .mem_2_fwd     ( mem_2_fwd ),
+
+        .is_mem_ready  ( is_mem_ready ),
+
+        .dbus_request  ( dbus_req_o ),
+        .dbus_response ( dbus_resp_i )
+    );
+
+    WB_Stage u_wb (
+        .inst_ctx ( mem_inst_ctx ),
+        .mem_2_wb ( mem_2_wb ),
+
+        .wb_2_id  ( wb_2_id )
+    );
+
+    // ------------------------------------------------------------------------
+    // Commit / Difftest：MEM/WB 寄存器出口 + 1-cycle prev 比较
+    //   prev_* 同步 MEM/WB 输出；commit_valid 当且仅当 MEM/WB 发生推进时拉高
+    //   commit_pc/_instr/_wen/_wdest/_wdata 报告"上一拍已经进入 RF 的指令"
+    // ------------------------------------------------------------------------
+    INST_CTX prev_inst_ctx;
+    MEM_2_WB prev_mem_2_wb;
 
     always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
-            stall_if_issue_block_q <= 1'b0;
-        else
-            stall_if_issue_block_q <= dm_busy || load_use_stall;
-    end
-    assign stall_if_issue_block = stall_if_issue_block_q;
-
-    assign alu_input.ctx.pc      = decoder_out.pc;
-    assign alu_input.ctx.inst    = decoder_out.inst;
-    assign alu_input.ctx.rd_addr = decoder_out.rd_addr;
-    assign alu_input.ctx.opcode  = decoder_out.opcode;
-    assign alu_input.ctrl.alu_op_code   = decoder_out.alu_op_code;
-    assign alu_input.ctrl.alu_inst_type = decoder_out.alu_inst_type;
-
-    // No forwarding: operand mux uses ID/EX register file read only (sel = RF).
-    BypassOperandMux u_bypass_mux (
-        .decoder_out_i        ( decoder_out ),
-        .fwd_data_ex_stage_i  ( alu_out.alu_res ),
-        .fwd_data_mem_stage_i ( load_bypass_data ),
-        .fwd_data_wb_stage_i  ( wb.rd_data ),
-        .op1_src_sel_i        ( 2'b00 ),
-        .op2_src_sel_i        ( 2'b00 ),
-        .store_val_src_sel_i  ( 2'b00 ),
-        .op1_val_o            ( alu_op1_val ),
-        .op2_val_o            ( alu_op2_val ),
-        .store_ex_data_o      ( alu_store_val )
-    );
-
-    assign alu_input.op1_val   = alu_op1_val;
-    assign alu_input.op2_val   = alu_op2_val;
-    assign alu_input.store_val = alu_store_val;
-
-    FetchStage u_fetch (
-        .clk          ( clk ),
-        .rst_n        ( rst_n ),
-        .stall_front_i( stall_front ),
-        .stall_if_issue_block_i ( stall_if_issue_block ),
-        .if_id_o      ( if_id ),
-        .im_busy_o    ( im_busy ),
-        .ibus_req_o   ( ibus_req_o ),
-        .ibus_resp_i  ( ibus_resp_i )
-    );
-
-    DecodeStage u_decode (
-        .clk      ( clk ),
-        .rst_n    ( rst_n ),
-        .stall_front_i( stall_front ),
-        .if_id_i  ( if_id ),
-        .wb_i     ( wb ),
-        .decoder_out_o ( decoder_out ),
-        .gpr_o    ( gpr_o )
-    );
-
-    ALUStage u_alu (
-        .clk         ( clk ),
-        .rst_n       ( rst_n ),
-        .stall_i     ( stall_front ),
-        .flush_i     ( 1'b0 ),
-        .alu_input_i ( alu_input ),
-        .alu_out_o   ( alu_out )
-    );
-
-    MemStage u_mem (
-        .clk       ( clk ),
-        .rst_n     ( rst_n ),
-        .stall_front_i( stall_front ),
-        .stall_back_i( stall_back ),
-        .mem_input_i ( alu_out ),
-        .dbus_req_o( dbus_req_o ),
-        .dbus_resp_i( dbus_resp_i ),
-        .dm_busy_o ( dm_busy ),
-        .load_bypass_valid_o ( load_bypass_valid ),
-        .load_bypass_data_o  ( load_bypass_data ),
-        .wb_o      ( wb )
-    );
-
-    // Retire previous WB slot when wb advances; aligns difftest with RegFile seeing retiring insn.
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
-            wb_prev_q <= '0;
-        else
-            wb_prev_q <= wb;
+        if (!rst_n) begin
+            prev_inst_ctx <= '0;
+            prev_mem_2_wb <= '0;
+        end
+        else begin
+            prev_inst_ctx <= mem_inst_ctx;
+            prev_mem_2_wb <= mem_2_wb;
+        end
     end
 
-    assign commit_valid_o  = (wb_prev_q.inst != 32'b0)
-        && ((wb.pc != wb_prev_q.pc) || (wb.inst != wb_prev_q.inst));
-    assign commit_pc_o     = wb_prev_q.pc;
-    assign commit_instr_o  = wb_prev_q.inst;
-    assign commit_wen_o    = wb_prev_q.wen;
-    assign commit_wdest_o  = {3'b0, wb_prev_q.rd_addr};
-    assign commit_wdata_o  = wb_prev_q.rd_data;
+    assign commit_valid_o = (prev_inst_ctx.inst != 32'b0)
+                          && ((mem_inst_ctx.pc_inst_address != prev_inst_ctx.pc_inst_address)
+                              || (mem_inst_ctx.inst            != prev_inst_ctx.inst));
+    assign commit_pc_o    = prev_inst_ctx.pc_inst_address;
+    assign commit_instr_o = prev_inst_ctx.inst;
+    assign commit_wen_o   = (prev_inst_ctx.rd_addr != 5'b0);
+    assign commit_wdest_o = {3'b0, prev_inst_ctx.rd_addr};
+    assign commit_wdata_o = prev_mem_2_wb.rd_data;
+
+    // Difftest skip：提交指令为 load/store 且访存地址 bit31 == 0（外设 MMIO 区）
+    logic commit_is_mem;
+    assign commit_is_mem = (prev_inst_ctx.opcode == OP_LOAD)
+                        || (prev_inst_ctx.opcode == OP_STORE);
+    assign commit_skip_o = commit_is_mem && (prev_mem_2_wb.mem_addr[31] == 1'b0);
 
 endmodule

@@ -3,7 +3,7 @@
 // Description : 根据 BRANCH_OP 与 rs1/rs2 输出 is_branch_taken，纯组合
 // ----------------------------------------------------------------------------
 
-`include "src_new/EX/EX_PKG.sv"
+`include "src/EX/EX_PKG.sv"
 
 import common::*;
 import EX_PKG::*;

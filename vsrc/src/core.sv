@@ -3,7 +3,7 @@
 
 `ifdef VERILATOR
 `include "include/common.sv"
-`include "src_new/Top.sv"
+`include "src/Top.sv"
 `endif
 
 module core import common::*;(

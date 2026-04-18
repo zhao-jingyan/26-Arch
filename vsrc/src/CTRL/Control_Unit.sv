@@ -10,7 +10,7 @@
 //                 → PC 重定向到 ex_pc_jump_address
 // ----------------------------------------------------------------------------
 
-`include "src_new/top_pkg.sv"
+`include "src/top_pkg.sv"
 
 import common::*;
 import top_pkg::*;

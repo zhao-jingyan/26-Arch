@@ -70,6 +70,7 @@ module Top (
     // 控制层输出
     logic stall_if, stall_id, stall_ex, stall_mem;
     logic insert_bubble;
+    logic flush_if_id;
     logic pc_should_jump;
     u64   pc_jump_address;
 
@@ -95,6 +96,7 @@ module Top (
         .stall_ex           ( stall_ex ),
         .stall_mem          ( stall_mem ),
         .insert_bubble      ( insert_bubble ),
+        .flush_if_id        ( flush_if_id ),
 
         .pc_should_jump     ( pc_should_jump ),
         .pc_jump_address    ( pc_jump_address )
@@ -105,6 +107,7 @@ module Top (
         .rst_n           ( rst_n ),
 
         .stall           ( stall_if ),
+        .flush           ( flush_if_id ),
         .pc_should_jump  ( pc_should_jump ),
         .pc_jump_address ( pc_jump_address ),
 

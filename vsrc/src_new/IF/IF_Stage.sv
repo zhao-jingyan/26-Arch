@@ -15,6 +15,7 @@ module IF_Stage (
     input  logic       rst_n,
 
     input  logic       stall,
+    input  logic       flush,            // 跳转命中时清空 IF/ID 寄存器
     input  logic       pc_should_jump,
     input  u64         pc_jump_address,
 
@@ -58,9 +59,12 @@ module IF_Stage (
         .ibus_response    ( ibus_response )
     );
 
-    // IF/ID 流水线寄存器：is_inst_ready && !stall 时前进；复位清零
+    // IF/ID 流水线寄存器：复位 / flush 清零；否则 is_inst_ready && !stall 时前进
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            if_2_id <= '0;
+        end
+        else if (flush) begin
             if_2_id <= '0;
         end
         else if (is_inst_ready && !stall) begin

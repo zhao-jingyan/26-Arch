@@ -307,11 +307,229 @@ typedef enum logic [1:0] { JT_NONE, JT_BR, JT_JAL, JT_JALR } JUMP_TYPE;
 
 ---
 
+## MEM Stage
+
+- **状态**：已实现
+- **文件**：
+  - [vsrc/src_new/MEM/MEM_Stage.sv](../vsrc/src_new/MEM/MEM_Stage.sv)
+  - [vsrc/src_new/MEM/Fetch_Data.sv](../vsrc/src_new/MEM/Fetch_Data.sv)
+  - [vsrc/src_new/MEM/DataMemory.sv](../vsrc/src_new/MEM/DataMemory.sv)
+
+### 顶层接口 `MEM_Stage`
+
+#### MEM_stage_input
+
+| 端口 | 方向 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `clk / rst_n` | input | `logic` | system_input |
+| `stall` | input | `logic` | 为高时 MEM/WB 流水寄存器保持 |
+| `inst_ctx_in` | input | `INST_CTX` | 来自 EX |
+| `ex_2_mem` | input | `EX_2_MEM` | 来自 EX |
+
+#### MEM_stage_output
+
+| 端口 | 方向 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `inst_ctx_out` | output | `INST_CTX` | 原样透传 |
+| `mem_2_wb` | output | `MEM_2_WB` | 含 `rd_data`（load 走 `load_data`，其他走 `ex_result`） |
+
+#### mem_2_ctrl_feedback（本轮裸端口，未来收进控制层）
+
+| 端口 | 方向 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `is_mem_ready` | output | `logic` | 本指令访存是否完成；非 mem 指令恒 1 |
+
+#### mem_2_dbus / dbus_2_mem
+
+| 端口 | 方向 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `dbus_request` | output | `dbus_req_t` | 对 dbus 的请求 |
+| `dbus_response` | input | `dbus_resp_t` | 来自 dbus 的响应 |
+
+### 子模块接口
+
+#### `Fetch_Data`
+
+| 端口 | 方向 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `clk / rst_n` | input | `logic` | system_input |
+| `pc_inst_address / inst` | input | `u64 / u32` | latch 命中判定的 key |
+| `mem_addr` | input | `u64` | 访存地址（来自 `ex_2_mem.ex_result`） |
+| `funct3` | input | `u3` | `inst[14:12]`，决定 size/strobe/扩展方式 |
+| `is_load / is_store` | input | `logic` | 指令类型 flag（由 MEM_Stage 从 opcode 判定） |
+| `store_data` | input | `u64` | store 写入数据（来自 `ex_2_mem.rs2_data`） |
+| `load_data` | output | `u64` | funct3 对齐 + sext/zext 后的 64 位结果 |
+| `is_mem_ready` | output | `logic` | 本指令访存是否完成 |
+| `dbus_request` | output | `dbus_req_t` | 透传给 dbus |
+| `dbus_response` | input | `dbus_resp_t` | 透传自 dbus |
+
+#### `DataMemory`
+
+| 端口 | 方向 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `clk / rst_n` | input | `logic` | system_input（当前未使用） |
+| `request_addr` | input | `u64` | 请求地址 |
+| `request_valid` | input | `logic` | 是否发出请求 |
+| `request_size` | input | `msize_t` | 访存字节数 |
+| `request_strobe` | input | `strobe_t` | 写字节使能，读请求全 0 |
+| `request_write_data` | input | `u64` | 写数据（已左移到对应 lane） |
+| `response_data` | output | `u64` | dbus 原始 64 位数据（未 lane 对齐） |
+| `is_response_valid` | output | `logic` | `response_data` 本周期是否有效 |
+| `dbus_request` | output | `dbus_req_t` | 组合映射自 request_* |
+| `dbus_response` | input | `dbus_resp_t` | 来自 dbus |
+
+### 相关 `top_pkg` 类型
+
+```systemverilog
+typedef struct packed {
+    u64 rd_data;
+} MEM_2_WB;
+```
+
+### 关键实现点
+
+- **`is_mem_ready` 语义**：非 mem 指令恒 1；mem 指令等单槽 latch 命中当前 `(pc, inst)` 才置 1
+- **单槽 latch**：`{latched_pc, latched_inst, latched_data, latched_valid}`；在 `is_response_valid && !is_mem_ready` 的周期写入；store 的 `latched_data` 无意义，仅用 `latched_valid` 表 done
+- **dbus 合约**：`valid` 拉高到 `data_ok` 期间 `addr/size/strobe/data` 必须稳定——由 MEM 向上游传 `is_mem_ready=0` 让 EX/MEM 寄存器保持来保证
+- **funct3 对齐**：`byte_idx = mem_addr[2:0]`；store 左移 `store_data << (byte_idx*8)`，strobe 按宽度左移；load 右移 `response_data >> (byte_idx*8)` 再按 lb/lh/lw/ld/lbu/lhu/lwu sext/zext
+- **rd mux**：`is_load ? load_data : ex_2_mem.ex_result`
+- **MEM/WB 寄存器更新条件**：`!stall && is_mem_ready` 时 latch；复位清零
+- **opcode 判别**：`import ID_PKG::*;` 复用 `OP_LOAD / OP_STORE` 常量
+- **支持指令**：`lb / lh / lw / ld / lbu / lhu / lwu / sb / sh / sw / sd`
+
+---
+
+## WB Stage
+
+- **状态**：已实现
+- **文件**：
+  - [vsrc/src_new/WB/WB_Stage.sv](../vsrc/src_new/WB/WB_Stage.sv)
+
+### 顶层接口 `WB_Stage`
+
+纯组合薄层，无子模块、无流水寄存器、不挂 `clk / rst_n`。
+
+#### WB_stage_input
+
+| 端口 | 方向 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `inst_ctx` | input | `INST_CTX` | 来自 MEM |
+| `mem_2_wb` | input | `MEM_2_WB` | 来自 MEM |
+
+#### WB_stage_output
+
+| 端口 | 方向 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `wb_2_id` | output | `WB_2_ID` | 写回三元组，直连 ID 的 RegFile 写口 |
+
+### 相关 `top_pkg` 类型
+
+```systemverilog
+typedef struct packed {
+    logic write_en;
+    u5    write_addr;
+    u64   write_data;
+} WB_2_ID;
+```
+
+### 关键实现点
+
+- **纯组合**：`assign` 三行即完成打包，无时序元件
+- **write_en = (rd_addr != 0)**：S/B-type 在 Decoder 已清零 `rd_addr`，store/branch 自然不写回；x0 写入 RegFile 内部也会屏蔽
+- **write_addr / write_data 直通**：`wb_2_id.write_addr = inst_ctx.rd_addr`，`wb_2_id.write_data = mem_2_wb.rd_data`
+- **rd_data 选择已在 MEM 做**：load → 对齐后的 `load_data`；其他 → `ex_result`
+
+---
+
+## Control_Unit
+
+- **状态**：已实现（最小策略）
+- **文件**：
+  - [vsrc/src_new/CTRL/Control_Unit.sv](../vsrc/src_new/CTRL/Control_Unit.sv)
+
+### 顶层接口 `Control_Unit`
+
+纯组合，无 system_input。
+
+#### ctrl_input
+
+| 端口 | 方向 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `if_2_ctrl` | input | `IF_2_CTRL` | 含 `is_inst_ready` |
+| `id_2_ctrl` | input | `ID_2_CTRL` | 当前仅 `placeholder` |
+| `is_mem_ready` | input | `logic` | MEM 裸端口反馈 |
+| `ex_pc_should_jump` | input | `logic` | EX 跳转使能（裸端口） |
+| `ex_pc_jump_address` | input | `u64` | EX 跳转目标（裸端口） |
+
+#### ctrl_output
+
+| 端口 | 方向 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `stall_if / stall_id / stall_ex / stall_mem` | output | `logic` | 各 stage 的 stall |
+| `pc_should_jump / pc_jump_address` | output | `logic / u64` | 透传给 IF |
+
+### 关键实现点
+
+- **最小 stall 策略**：`pipeline_stall = !is_inst_ready || !is_mem_ready`，四个 `stall_*` 同值
+- **跳转组合透传**：EX → Control_Unit → IF，同拍生效，不加寄存器
+- **无 hazard / forwarding**：相邻 RAW 会读旧值；lab2 正向若暴露需补 load-use stall 与 forwarding
+- **id_2_ctrl**：当前仅 `placeholder`，显式消费避免 Verilator unused warning
+
+---
+
+## Top 顶层
+
+- **状态**：已实现
+- **文件**：
+  - [vsrc/src_new/Top.sv](../vsrc/src_new/Top.sv)
+- **外部入口**：`vsrc/src/core.sv` 已将 `` `include `` 从 `src/Top.sv` 切换到 `src_new/Top.sv`，v1 `Top` 不再编译
+
+### 顶层接口 `Top`
+
+保持与 v1 `Top` 一致的对外签名，供 `core.sv` 与 Difftest 直接接入。
+
+#### top_input
+
+| 端口 | 方向 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `clk / rst_n` | input | `logic` | system_input |
+| `ibus_resp_i` | input | `ibus_resp_t` | ibus 响应 |
+| `dbus_resp_i` | input | `dbus_resp_t` | dbus 响应 |
+
+#### top_output
+
+| 端口 | 方向 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `ibus_req_o` | output | `ibus_req_t` | ibus 请求 |
+| `dbus_req_o` | output | `dbus_req_t` | dbus 请求 |
+| `commit_valid_o` | output | `logic` | Difftest 提交使能（仅 MEM/WB 推进时拉高） |
+| `commit_pc_o` | output | `u64` | 本拍提交指令的 PC（= prev） |
+| `commit_instr_o` | output | `u32` | 本拍提交指令的指令字 |
+| `commit_wen_o` | output | `logic` | 是否写 RF（= `prev.rd_addr != 0`） |
+| `commit_wdest_o` | output | `u8` | 写回 GPR 号（`{3'b0, prev.rd_addr}`） |
+| `commit_wdata_o` | output | `u64` | 写回数据（= `prev.rd_data`） |
+| `gpr_o` | output | `u64 [0:31]` | RegFile 快照 |
+
+### 关键实现点
+
+- **五段装配**：`IF_Stage → ID_Stage → EX_Stage → MEM_Stage → WB_Stage`，外加 `Control_Unit`
+- **反馈回路**：
+  - `WB → ID`：`wb_2_id` 组合直送 RegFile 写口
+  - `EX → IF`：`pc_should_jump / pc_jump_address` 经 Control_Unit 透传，同拍生效
+- **commit 桥接**：用 1-cycle prev 寄存器跟踪 MEM/WB 推进沿，mimic v1 `wb_prev_q` 做法
+  - `commit_valid = (prev.inst != 0) && (mem_inst_ctx != prev_inst_ctx)`
+  - `commit_wdest = {3'b0, prev_inst_ctx.rd_addr}`
+  - `commit_wdata = prev_mem_2_wb.rd_data`
+  - 复位时 prev 清零，首拍不会误提交；pipeline 冻结时 mem 与 prev 相等，不会重复提交
+- **v1 目录唯一修改点**：`vsrc/src/core.sv` 的 include 切换；v1 Top 及其子模块整体停编
+
+---
+
 ## 未实现 Stage
 
-下列 stage 尚未实现，规约见 [arch_v2.md §3](arch_v2.md#3-模块边界) 或等用户给出：
+下列项尚未实现，规约见 [arch_v2.md §3](arch_v2.md#3-模块边界) 或等用户给出：
 
-- MEM Stage
-- WB Stage
-- 控制层（stall 产生；分支反馈 bundle 化）
-- 乘除法（`MUL/DIV/REM` 及 FSM）
+- **hazard / forwarding**（load-use stall、EX/MEM/WB → EX forwarding；对应 `ID_2_CTRL` 字段补齐）
+- **控制反馈 bundle 化**（`EX_2_CTRL` / `MEM_2_CTRL` 收拢目前的裸端口）
+- **flush 语义**（跳转拍显式清零 IF/ID、ID/EX，若控制层形态要求）
+- **乘除法**（`MUL/DIV/REM` 及 FSM）

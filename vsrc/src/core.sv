@@ -3,8 +3,7 @@
 
 `ifdef VERILATOR
 `include "include/common.sv"
-`include "src/Top.sv"
-`include "src/pipeline_pkg.sv"
+`include "src_new/Top.sv"
 `endif
 
 module core import common::*;(

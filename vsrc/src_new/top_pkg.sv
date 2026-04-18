@@ -62,6 +62,11 @@ package top_pkg;
         u64 rs2_data;    // store 用，原样透传
     } EX_2_MEM;
 
+    // MEM → WB：MEM 末尾流水寄存器的业务输出
+    typedef struct packed {
+        u64 rd_data;     // load 走对齐后的 load_data，其他走 ex_result
+    } MEM_2_WB;
+
     // ID → 控制层：字段集合待控制层形态明确后再定
     typedef struct packed {
         logic placeholder;

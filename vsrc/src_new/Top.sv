@@ -12,6 +12,7 @@
 `include "src_new/MEM/MEM_Stage.sv"
 `include "src_new/WB/WB_Stage.sv"
 `include "src_new/CTRL/Control_Unit.sv"
+`include "src_new/CTRL/Forward_Unit.sv"
 
 import common::*;
 import top_pkg::*;
@@ -42,13 +43,18 @@ module Top (
 
     INST_CTX  id_inst_ctx;
     ID_2_EX   id_2_ex;
+    ID_2_FWD  id_2_fwd;
     ID_2_CTRL id_2_ctrl;
 
     INST_CTX  ex_inst_ctx;
     EX_2_MEM  ex_2_mem;
+    EX_2_FWD  ex_2_fwd;
 
     INST_CTX  mem_inst_ctx;
     MEM_2_WB  mem_2_wb;
+    MEM_2_FWD mem_2_fwd;
+
+    FWD_2_EX  fwd_2_ex;
 
     WB_2_ID   wb_2_id;
 
@@ -61,6 +67,14 @@ module Top (
     logic stall_if, stall_id, stall_ex, stall_mem;
     logic pc_should_jump;
     u64   pc_jump_address;
+
+    Forward_Unit u_fwd (
+        .id_2_fwd  ( id_2_fwd ),
+        .ex_2_fwd  ( ex_2_fwd ),
+        .mem_2_fwd ( mem_2_fwd ),
+
+        .fwd_2_ex  ( fwd_2_ex )
+    );
 
     Control_Unit u_ctrl (
         .if_2_ctrl          ( if_2_ctrl ),
@@ -104,6 +118,7 @@ module Top (
 
         .inst_ctx  ( id_inst_ctx ),
         .id_2_ex   ( id_2_ex ),
+        .id_2_fwd  ( id_2_fwd ),
         .gpr       ( gpr_o ),
         .id_2_ctrl ( id_2_ctrl )
     );
@@ -116,9 +131,11 @@ module Top (
 
         .inst_ctx_in     ( id_inst_ctx ),
         .id_2_ex         ( id_2_ex ),
+        .fwd_2_ex        ( fwd_2_ex ),
 
         .inst_ctx_out    ( ex_inst_ctx ),
         .ex_2_mem        ( ex_2_mem ),
+        .ex_2_fwd        ( ex_2_fwd ),
 
         .pc_should_jump  ( ex_pc_should_jump ),
         .pc_jump_address ( ex_pc_jump_address )
@@ -135,6 +152,7 @@ module Top (
 
         .inst_ctx_out  ( mem_inst_ctx ),
         .mem_2_wb      ( mem_2_wb ),
+        .mem_2_fwd     ( mem_2_fwd ),
 
         .is_mem_ready  ( is_mem_ready ),
 

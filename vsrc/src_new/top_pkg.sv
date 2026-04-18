@@ -42,9 +42,8 @@ package top_pkg;
     } WB_2_ID;
 
     // ID → EX 专属：EX 消费后不再往下传
+    // 注：rs1_data / rs2_data 已剥离到 ID_2_FWD，EX 读 rs 走 fwd_2_ex
     typedef struct packed {
-        u64         rs1_data;
-        u64         rs2_data;
         u64         imm;
         logic       is_op1_zero;   // LUI 场景
         logic       is_op1_pc;     // AUIPC：ALU op1 = PC
@@ -66,6 +65,32 @@ package top_pkg;
     typedef struct packed {
         u64 rd_data;     // load 走对齐后的 load_data，其他走 ex_result
     } MEM_2_WB;
+
+    // ID → FWD：供 Forward_Unit 判定与默认回退（ID/EX 寄存器 tap）
+    typedef struct packed {
+        u5  rs1_addr;
+        u5  rs2_addr;
+        u64 rs1_data;    // RegFile 原始读值（forward miss 时用）
+        u64 rs2_data;
+    } ID_2_FWD;
+
+    // EX → FWD：EX/MEM 流水寄存器 tap，供 distance-1 RAW forward
+    typedef struct packed {
+        u5  rd_addr;
+        u64 ex_result;   // load 场景是地址（见 load-use 例外）
+    } EX_2_FWD;
+
+    // MEM → FWD：MEM/WB 流水寄存器 tap，供 distance-2 RAW forward
+    typedef struct packed {
+        u5  rd_addr;
+        u64 rd_data;     // load 已对齐
+    } MEM_2_FWD;
+
+    // FWD → EX：forward 解析后的操作数
+    typedef struct packed {
+        u64 rs1_data;
+        u64 rs2_data;
+    } FWD_2_EX;
 
     // ID → 控制层：字段集合待控制层形态明确后再定
     typedef struct packed {

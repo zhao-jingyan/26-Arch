@@ -23,6 +23,7 @@ module MEM_Stage (
 
     output INST_CTX    inst_ctx_out,
     output MEM_2_WB    mem_2_wb,
+    output MEM_2_FWD   mem_2_fwd,
 
     output logic       is_mem_ready,
 
@@ -74,5 +75,9 @@ module MEM_Stage (
             mem_2_wb.rd_data <= rd_data;
         end
     end
+
+    // MEM → FWD：MEM/WB 寄存器 tap，供 distance-2 RAW forward
+    assign mem_2_fwd.rd_addr = inst_ctx_out.rd_addr;
+    assign mem_2_fwd.rd_data = mem_2_wb.rd_data;
 
 endmodule

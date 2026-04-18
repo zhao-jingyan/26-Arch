@@ -21,15 +21,18 @@ module EX_Stage (
 
     input  INST_CTX inst_ctx_in,
     input  ID_2_EX  id_2_ex,
+    input  FWD_2_EX fwd_2_ex,
 
     output INST_CTX inst_ctx_out,
     output EX_2_MEM ex_2_mem,
+    output EX_2_FWD ex_2_fwd,
 
     output logic    pc_should_jump,
     output u64      pc_jump_address
 );
 
     // op1 / op2 mux（mux 在 EX 做，不在 ID 做）
+    // rs1/rs2 源已由 Forward_Unit 解析，统一走 fwd_2_ex
     u64 alu_input_1;
     u64 alu_input_2;
 
@@ -39,10 +42,10 @@ module EX_Stage (
         else if (id_2_ex.is_op1_pc)
             alu_input_1 = inst_ctx_in.pc_inst_address;
         else
-            alu_input_1 = id_2_ex.rs1_data;
+            alu_input_1 = fwd_2_ex.rs1_data;
     end
 
-    assign alu_input_2 = id_2_ex.is_op2_imm ? id_2_ex.imm : id_2_ex.rs2_data;
+    assign alu_input_2 = id_2_ex.is_op2_imm ? id_2_ex.imm : fwd_2_ex.rs2_data;
 
     // 三个子单元
     u64   alu_core_res;
@@ -60,16 +63,16 @@ module EX_Stage (
 
     Branch_Unit u_branch_unit (
         .branch_op       ( id_2_ex.branch_op ),
-        // 分支判定吃原始 rs1/rs2，不走 mux
-        .rs1_data        ( id_2_ex.rs1_data ),
-        .rs2_data        ( id_2_ex.rs2_data ),
+        // 分支判定吃 forward 后的 rs1/rs2
+        .rs1_data        ( fwd_2_ex.rs1_data ),
+        .rs2_data        ( fwd_2_ex.rs2_data ),
         .is_branch_taken ( is_branch_taken )
     );
 
     PC_Target u_pc_target (
         .jump_type       ( id_2_ex.jump_type ),
         .pc_inst_address ( inst_ctx_in.pc_inst_address ),
-        .rs1_data        ( id_2_ex.rs1_data ),
+        .rs1_data        ( fwd_2_ex.rs1_data ),
         .imm             ( id_2_ex.imm ),
         .pc_plus_4       ( pc_plus_4 ),
         .jump_target     ( jump_target )
@@ -103,8 +106,12 @@ module EX_Stage (
         end else if (!stall) begin
             inst_ctx_out        <= inst_ctx_in;
             ex_2_mem.ex_result  <= ex_result;
-            ex_2_mem.rs2_data   <= id_2_ex.rs2_data;
+            ex_2_mem.rs2_data   <= fwd_2_ex.rs2_data;
         end
     end
+
+    // EX → FWD：EX/MEM 寄存器 tap，供 distance-1 RAW forward
+    assign ex_2_fwd.rd_addr   = inst_ctx_out.rd_addr;
+    assign ex_2_fwd.ex_result = ex_2_mem.ex_result;
 
 endmodule

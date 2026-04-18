@@ -40,7 +40,12 @@ module RegFile (
         end
     end
 
-    assign read_data_1 = (read_addr_1 == 5'b0) ? 64'b0 : reg_file[read_addr_1];
-    assign read_data_2 = (read_addr_2 == 5'b0) ? 64'b0 : reg_file[read_addr_2];
+    // 组合读含 write-during-read bypass：同周期 WB 写入与 ID 读的 distance-3 RAW 由此覆盖
+    assign read_data_1 = (read_addr_1 == 5'b0)                                 ? 64'b0
+                       : (write_en && |write_addr && write_addr == read_addr_1) ? write_data
+                       :                                                          reg_file[read_addr_1];
+    assign read_data_2 = (read_addr_2 == 5'b0)                                 ? 64'b0
+                       : (write_en && |write_addr && write_addr == read_addr_2) ? write_data
+                       :                                                          reg_file[read_addr_2];
 
 endmodule

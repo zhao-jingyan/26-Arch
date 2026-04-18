@@ -22,6 +22,7 @@ module ID_Stage (
 
     output INST_CTX  inst_ctx,
     output ID_2_EX   id_2_ex,
+    output ID_2_FWD  id_2_fwd,
     output u64       gpr [0:31],
     output ID_2_CTRL id_2_ctrl
 );
@@ -88,19 +89,18 @@ module ID_Stage (
         .imm    ( se_imm )
     );
 
-    // ID/EX 流水寄存器：物理上同一组，按语义拆成 inst_ctx / id_2_ex 两个输出
+    // ID/EX 流水寄存器：物理上同一组，按语义拆成 inst_ctx / id_2_ex / id_2_fwd 三个输出
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             inst_ctx <= '0;
             id_2_ex  <= '0;
+            id_2_fwd <= '0;
         end else if (!stall) begin
             inst_ctx.pc_inst_address <= if_2_id.pc_inst_address;
             inst_ctx.inst            <= if_2_id.inst;
             inst_ctx.rd_addr         <= dec_rd_addr;
             inst_ctx.opcode          <= dec_opcode;
 
-            id_2_ex.rs1_data      <= rf_read_data_1;
-            id_2_ex.rs2_data      <= rf_read_data_2;
             id_2_ex.imm           <= se_imm;
             id_2_ex.is_op1_zero   <= dec_is_op1_zero;
             id_2_ex.is_op1_pc     <= dec_is_op1_pc;
@@ -110,6 +110,11 @@ module ID_Stage (
             id_2_ex.branch_op     <= dec_branch_op;
             id_2_ex.jump_type     <= dec_jump_type;
             id_2_ex.rd_src        <= dec_rd_src;
+
+            id_2_fwd.rs1_addr <= dec_rs1_addr;
+            id_2_fwd.rs2_addr <= dec_rs2_addr;
+            id_2_fwd.rs1_data <= rf_read_data_1;
+            id_2_fwd.rs2_data <= rf_read_data_2;
         end
     end
 

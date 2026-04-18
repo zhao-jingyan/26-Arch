@@ -1,6 +1,6 @@
 `ifdef VERILATOR
 `include "include/common.sv"
-`include "src/core.sv"
+`include "src_new/core.sv"
 `include "util/IBusToCBus.sv"
 `include "util/DBusToCBus.sv"
 `include "util/CBusArbiter.sv"

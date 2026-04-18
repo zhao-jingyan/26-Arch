@@ -24,7 +24,7 @@ handin:
 sim-verilog:
 	@echo "I don't know why, just make difftest happy..."
 
-DIFFTEST_OPTS = DELAY=0 # remove on lab 2
+# DIFFTEST_OPTS = DELAY=0 # remove on lab 2
 
 emu:
 	$(MAKE) -C ./difftest emu $(DIFFTEST_OPTS)

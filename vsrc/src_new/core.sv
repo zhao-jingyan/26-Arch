@@ -50,7 +50,7 @@ module core import common::*;(
 		.valid              (commit_valid),   // 0 代表无提交
 		.pc                 (commit_pc),      // 这条指令的 pc
 		.instr              (commit_instr),   // 这条指令的内容
-		.skip               (0),              // 暂时无需改动
+		.skip               ((mem & memaddr[31] == 0)),
 		.isRVC              (0),              // 无需改动
 		.scFailed           (0),              // 无需改动
 		.wen                (commit_wen),     // 是否写入 GPR

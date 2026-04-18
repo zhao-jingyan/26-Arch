@@ -77,13 +77,15 @@ module Example (
 
 代码里用**空行**分隔对应 bundle，便于快速浏览与维护。
 
-### 类型与常量（沿用 v1）
+### 类型与常量
 
 - **位宽类型**：`uN` 表示无符号 N 位（如 `u64`、`u32`、`u5`）
-- **typedef**：`*_t` 后缀（如 `addr_t`、`word_t`、`cbus_req_t`）
+- **typedef**：直接用语义名，**不加后缀**（示例：`IF_2_ID`、`ID_2_EX`）
 - **枚举 / 包名**：SCREAMING_SNAKE_CASE（如 `ALU_OP_CODE`、`ALU_INST`）
 - **模块名**：PascalCase，可带子单元前缀（如 `ALU_Core`、`IF_Stage`）
 - **复位**：`rst_n` 低有效
+
+> 脚注：`vsrc/include/common.sv` 里既有的 `addr_t / word_t / cbus_req_t / ibus_req_t / ibus_resp_t / dbus_req_t / dbus_resp_t / msize_t` 等 v1 遗留类型保留 `_t` 后缀，不在本轮重命名范围，v2 代码可继续使用。
 
 ---
 

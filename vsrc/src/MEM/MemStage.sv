@@ -18,7 +18,7 @@ module MemStage (
     input  logic    stall_front_i,
     input  logic    stall_back_i,
 
-    input  ex_mem_t ex_mem_i,
+    input  mem_input_t mem_input_i,
     output dbus_req_t dbus_req_o,
     input  dbus_resp_t dbus_resp_i,
     output logic    dm_busy_o,
@@ -46,18 +46,18 @@ module MemStage (
     logic [31:0] mem_inst_q;
     u7    mem_opcode_q;
 
-    assign is_load  = (ex_mem_i.opcode == OP_LOAD);
-    assign is_store = (ex_mem_i.opcode == OP_STORE);
+    assign is_load  = (mem_input_i.ctx.opcode == OP_LOAD);
+    assign is_store = (mem_input_i.ctx.opcode == OP_STORE);
     assign is_mem   = is_load || is_store;
-    assign funct3   = ex_mem_i.inst[14:12];
-    assign mem_inst_same = (ex_mem_i.pc == mem_pc_q)
-                        && (ex_mem_i.inst == mem_inst_q)
-                        && (ex_mem_i.opcode == mem_opcode_q);
+    assign funct3   = mem_input_i.ctx.inst[14:12];
+    assign mem_inst_same = (mem_input_i.ctx.pc == mem_pc_q)
+                        && (mem_input_i.ctx.inst == mem_inst_q)
+                        && (mem_input_i.ctx.opcode == mem_opcode_q);
     
     MemDataAlign u_mem_data_align (
         .funct3_i     ( funct3 ),
-        .addr_i       ( ex_mem_i.alu_res ),
-        .store_data_i ( ex_mem_i.store_data ),
+        .addr_i       ( mem_input_i.alu_res ),
+        .store_data_i ( mem_input_i.store_data ),
         .load_rdata_i ( dbus_resp_i.data ),
         .req_size_o   ( req_size ),
         .req_strobe_o ( store_strobe ),
@@ -66,13 +66,13 @@ module MemStage (
     );
 
     assign dbus_req_o.valid  = is_mem && mem_req_pending_q;
-    assign dbus_req_o.addr   = ex_mem_i.alu_res;
+    assign dbus_req_o.addr   = mem_input_i.alu_res;
     assign dbus_req_o.size   = req_size;
     assign dbus_req_o.strobe = is_store ? store_strobe : 8'b0;
     assign dbus_req_o.data   = is_store ? store_wdata : 64'b0;
 
     assign dm_busy_o = is_mem && !(mem_req_done_q || (mem_req_pending_q && dbus_resp_i.data_ok));
-    assign load_bypass_valid_o = is_load && mem_req_pending_q && dbus_resp_i.data_ok && (ex_mem_i.rd_addr != 5'b0);
+    assign load_bypass_valid_o = is_load && mem_req_pending_q && dbus_resp_i.data_ok && (mem_input_i.ctx.rd_addr != 5'b0);
     assign load_bypass_data_o  = load_data_ext;
 
     // Keep one in-flight memory request for current EX/MEM instruction.
@@ -86,9 +86,9 @@ module MemStage (
             mem_opcode_q      <= '0;
         end
         else begin
-            mem_pc_q     <= ex_mem_i.pc;
-            mem_inst_q   <= ex_mem_i.inst;
-            mem_opcode_q <= ex_mem_i.opcode;
+            mem_pc_q     <= mem_input_i.ctx.pc;
+            mem_inst_q   <= mem_input_i.ctx.inst;
+            mem_opcode_q <= mem_input_i.ctx.opcode;
 
             if (!is_mem) begin
                 mem_req_pending_q <= 1'b0;
@@ -104,18 +104,18 @@ module MemStage (
         end
     end
 
-    // Load: data_ok is comb; mem_req_done_q updates next edge. Same edge ex_mem may advance once
+    // Load: data_ok is comb; mem_req_done_q updates next edge. Same edge mem_input may advance once
     // dm_busy drops, so capture wb using pending&&data_ok here (else load writeback is lost).
     assign mem_wb_d.wen     = is_load
-        ? ((ex_mem_i.rd_addr != 5'b0)
+        ? ((mem_input_i.ctx.rd_addr != 5'b0)
             && (mem_req_done_q || (mem_req_pending_q && dbus_resp_i.data_ok)))
-        : ((ex_mem_i.rd_addr != 5'b0) && !is_store);
-    assign mem_wb_d.rd_addr = ex_mem_i.rd_addr;
+        : ((mem_input_i.ctx.rd_addr != 5'b0) && !is_store);
+    assign mem_wb_d.rd_addr = mem_input_i.ctx.rd_addr;
     assign mem_wb_d.rd_data = is_load
         ? ((mem_req_pending_q && dbus_resp_i.data_ok) ? load_data_ext : load_data_q)
-        : ex_mem_i.alu_res;
-    assign mem_wb_d.pc      = ex_mem_i.pc;
-    assign mem_wb_d.inst    = ex_mem_i.inst;
+        : mem_input_i.alu_res;
+    assign mem_wb_d.pc      = mem_input_i.ctx.pc;
+    assign mem_wb_d.inst    = mem_input_i.ctx.inst;
 
     // MEM/WB pipeline reg
     always_ff @(posedge clk or negedge rst_n) begin

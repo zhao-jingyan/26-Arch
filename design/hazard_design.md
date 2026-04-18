@@ -1,5 +1,7 @@
 # Hazard 模块设计文档
 
+> **[v1 过时文档]** 本文描述的是 v1 流水线的 Hazard 设计。v2 架构已将其拆解，stall/forwarding 产生机制待定，详见 [arch_v2.md](arch_v2.md)。本文保留作历史参考。
+
 本文档说明 Hazard 模块的 stall 与 forwarding 设计，用于管理流水线数据冒险。
 
 ---

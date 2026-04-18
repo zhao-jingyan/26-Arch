@@ -45,15 +45,40 @@ package pipeline_pkg;
         u7           opcode;
     } id_ex_t;
 
-    // EX/MEM: output from ALU stage
+    // Decode (ID/EX reg) payload; same layout as id_ex_t
+    typedef id_ex_t decoder_out_t;
+
+    // EX stage: instruction context for pipeline transfer (no operand / rf raw fields)
     typedef struct packed {
-        u64         pc;
+        u64          pc;
         logic [31:0] inst;
-        u5          rd_addr;
-        u64         alu_res;
-        u64         store_data;
-        u7          opcode;
-    } ex_mem_t;
+        u5           rd_addr;
+        u7           opcode;
+    } inst_ctx_t;
+
+    // EX stage: ALU control only
+    typedef struct packed {
+        ALU_OP_CODE  alu_op_code;
+        ALU_INST     alu_inst_type;
+    } alu_ctrl_t;
+
+    // ALU Stage 输入：上层已准备好的纯净数据包
+    typedef struct packed {
+        inst_ctx_t   ctx;
+        alu_ctrl_t   ctrl;
+        u64          op1_val;
+        u64          op2_val;
+        u64          store_val;
+    } alu_input_t;
+
+    // ALU→MEM：与 MemStage 输入对齐
+    typedef struct packed {
+        inst_ctx_t   ctx;
+        u64          alu_res;
+        u64          store_data;
+    } alu_out_t;
+
+    typedef alu_out_t mem_input_t;
 
     // ------------------------------------------------------------------------
     // Instruction Memory: IF fetch interface

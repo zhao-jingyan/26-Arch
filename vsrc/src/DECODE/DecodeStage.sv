@@ -23,7 +23,7 @@ module DecodeStage (
     input  if_id_t    if_id_i,
     input  wb_reg_t   wb_i,
 
-    output id_ex_t    id_ex_o,
+    output decoder_out_t decoder_out_o,
     output u64        gpr_o [0:31]
 );
 
@@ -99,20 +99,20 @@ module DecodeStage (
     // ID/EX pipeline reg
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            id_ex_o <= '0;
+            decoder_out_o <= '0;
         end else if (!stall_front_i) begin
-            id_ex_o.pc           <= if_id_i.pc;
-            id_ex_o.inst         <= if_id_i.inst;
-            id_ex_o.rd_addr      <= rd_addr;
-            id_ex_o.rs1_addr     <= rs1_addr_sel;
-            id_ex_o.rs2_addr     <= rs2_addr_sel;
-            id_ex_o.rs1_data     <= rs1_data_sel;
-            id_ex_o.rs2_data     <= rs2_data_sel;
-            id_ex_o.store_data   <= store_data_sel;
-            id_ex_o.imm          <= imm;
-            id_ex_o.alu_op_code  <= alu_op_code;
-            id_ex_o.alu_inst_type <= alu_inst_type;
-            id_ex_o.opcode       <= opcode;
+            decoder_out_o.pc           <= if_id_i.pc;
+            decoder_out_o.inst         <= if_id_i.inst;
+            decoder_out_o.rd_addr      <= rd_addr;
+            decoder_out_o.rs1_addr     <= rs1_addr_sel;
+            decoder_out_o.rs2_addr     <= rs2_addr_sel;
+            decoder_out_o.rs1_data     <= rs1_data_sel;
+            decoder_out_o.rs2_data     <= rs2_data_sel;
+            decoder_out_o.store_data   <= store_data_sel;
+            decoder_out_o.imm          <= imm;
+            decoder_out_o.alu_op_code  <= alu_op_code;
+            decoder_out_o.alu_inst_type <= alu_inst_type;
+            decoder_out_o.opcode       <= opcode;
         end
     end
 

@@ -49,6 +49,7 @@ module Top (
     INST_CTX  ex_inst_ctx;
     EX_2_MEM  ex_2_mem;
     EX_2_FWD  ex_2_fwd;
+    EX_2_CTRL ex_2_ctrl;
 
     INST_CTX  mem_inst_ctx;
     MEM_2_WB  mem_2_wb;
@@ -65,6 +66,7 @@ module Top (
 
     // 控制层输出
     logic stall_if, stall_id, stall_ex, stall_mem;
+    logic insert_bubble;
     logic pc_should_jump;
     u64   pc_jump_address;
 
@@ -79,6 +81,7 @@ module Top (
     Control_Unit u_ctrl (
         .if_2_ctrl          ( if_2_ctrl ),
         .id_2_ctrl          ( id_2_ctrl ),
+        .ex_2_ctrl          ( ex_2_ctrl ),
         .is_mem_ready       ( is_mem_ready ),
 
         .ex_pc_should_jump  ( ex_pc_should_jump ),
@@ -88,6 +91,7 @@ module Top (
         .stall_id           ( stall_id ),
         .stall_ex           ( stall_ex ),
         .stall_mem          ( stall_mem ),
+        .insert_bubble      ( insert_bubble ),
 
         .pc_should_jump     ( pc_should_jump ),
         .pc_jump_address    ( pc_jump_address )
@@ -109,18 +113,19 @@ module Top (
     );
 
     ID_Stage u_id (
-        .clk       ( clk ),
-        .rst_n     ( rst_n ),
+        .clk           ( clk ),
+        .rst_n         ( rst_n ),
 
-        .stall     ( stall_id ),
-        .if_2_id   ( if_2_id ),
-        .wb_2_id   ( wb_2_id ),
+        .stall         ( stall_id ),
+        .insert_bubble ( insert_bubble ),
+        .if_2_id       ( if_2_id ),
+        .wb_2_id       ( wb_2_id ),
 
-        .inst_ctx  ( id_inst_ctx ),
-        .id_2_ex   ( id_2_ex ),
-        .id_2_fwd  ( id_2_fwd ),
-        .gpr       ( gpr_o ),
-        .id_2_ctrl ( id_2_ctrl )
+        .inst_ctx      ( id_inst_ctx ),
+        .id_2_ex       ( id_2_ex ),
+        .id_2_fwd      ( id_2_fwd ),
+        .gpr           ( gpr_o ),
+        .id_2_ctrl     ( id_2_ctrl )
     );
 
     EX_Stage u_ex (
@@ -136,6 +141,7 @@ module Top (
         .inst_ctx_out    ( ex_inst_ctx ),
         .ex_2_mem        ( ex_2_mem ),
         .ex_2_fwd        ( ex_2_fwd ),
+        .ex_2_ctrl       ( ex_2_ctrl ),
 
         .pc_should_jump  ( ex_pc_should_jump ),
         .pc_jump_address ( ex_pc_jump_address )

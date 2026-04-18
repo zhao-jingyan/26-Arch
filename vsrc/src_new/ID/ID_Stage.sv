@@ -17,6 +17,7 @@ module ID_Stage (
     input  logic     rst_n,
 
     input  logic     stall,
+    input  logic     insert_bubble,    // load-use 时向 ID/EX 寄存器注入 NOP
     input  IF_2_ID   if_2_id,
     input  WB_2_ID   wb_2_id,
 
@@ -90,8 +91,13 @@ module ID_Stage (
     );
 
     // ID/EX 流水寄存器：物理上同一组，按语义拆成 inst_ctx / id_2_ex / id_2_fwd 三个输出
+    // 优先级：rst_n > insert_bubble（load-use 注入 NOP）> !stall（正常推进）
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            inst_ctx <= '0;
+            id_2_ex  <= '0;
+            id_2_fwd <= '0;
+        end else if (insert_bubble) begin
             inst_ctx <= '0;
             id_2_ex  <= '0;
             id_2_fwd <= '0;
@@ -118,7 +124,8 @@ module ID_Stage (
         end
     end
 
-    // 控制层反馈：当前仅占位
-    assign id_2_ctrl.placeholder = 1'b0;
+    // 控制层反馈：组合透出 ID 位当前指令（即 Decoder 输出）的 rs 号，供 load-use 检测
+    assign id_2_ctrl.rs1_addr = dec_rs1_addr;
+    assign id_2_ctrl.rs2_addr = dec_rs2_addr;
 
 endmodule

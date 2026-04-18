@@ -6,29 +6,32 @@
 // ----------------------------------------------------------------------------
 
 `include "src_new/top_pkg.sv"
+`include "src_new/ID/ID_PKG.sv"
 `include "src_new/EX/ALU_Core.sv"
 `include "src_new/EX/Branch_Unit.sv"
 `include "src_new/EX/PC_Target.sv"
 
 import common::*;
 import top_pkg::*;
+import ID_PKG::*;
 
 module EX_Stage (
-    input  logic    clk,
-    input  logic    rst_n,
+    input  logic     clk,
+    input  logic     rst_n,
 
-    input  logic    stall,
+    input  logic     stall,
 
-    input  INST_CTX inst_ctx_in,
-    input  ID_2_EX  id_2_ex,
-    input  FWD_2_EX fwd_2_ex,
+    input  INST_CTX  inst_ctx_in,
+    input  ID_2_EX   id_2_ex,
+    input  FWD_2_EX  fwd_2_ex,
 
-    output INST_CTX inst_ctx_out,
-    output EX_2_MEM ex_2_mem,
-    output EX_2_FWD ex_2_fwd,
+    output INST_CTX  inst_ctx_out,
+    output EX_2_MEM  ex_2_mem,
+    output EX_2_FWD  ex_2_fwd,
+    output EX_2_CTRL ex_2_ctrl,
 
-    output logic    pc_should_jump,
-    output u64      pc_jump_address
+    output logic     pc_should_jump,
+    output u64       pc_jump_address
 );
 
     // op1 / op2 mux（mux 在 EX 做，不在 ID 做）
@@ -113,5 +116,9 @@ module EX_Stage (
     // EX → FWD：EX/MEM 寄存器 tap，供 distance-1 RAW forward
     assign ex_2_fwd.rd_addr   = inst_ctx_out.rd_addr;
     assign ex_2_fwd.ex_result = ex_2_mem.ex_result;
+
+    // EX → 控制层：EX 位当前指令（即 ID/EX 寄存器输出）的 load / rd 信息，供 load-use 检测
+    assign ex_2_ctrl.is_ex_load = (inst_ctx_in.opcode == OP_LOAD);
+    assign ex_2_ctrl.rd_addr    = inst_ctx_in.rd_addr;
 
 endmodule

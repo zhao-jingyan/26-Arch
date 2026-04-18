@@ -92,10 +92,17 @@ package top_pkg;
         u64 rs2_data;
     } FWD_2_EX;
 
-    // ID → 控制层：字段集合待控制层形态明确后再定
+    // ID → 控制层：供 load-use 检测的 ID 位当前指令 rs 号（组合，源自 Decoder）
     typedef struct packed {
-        logic placeholder;
+        u5 rs1_addr;
+        u5 rs2_addr;
     } ID_2_CTRL;
+
+    // EX → 控制层：供 load-use 检测的 EX 位当前指令信息（组合，源自 ID/EX 寄存器输出）
+    typedef struct packed {
+        logic is_ex_load;   // EX 位指令是否为 load
+        u5    rd_addr;      // EX 位指令的 rd
+    } EX_2_CTRL;
 
 endpackage
 

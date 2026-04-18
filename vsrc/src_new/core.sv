@@ -24,6 +24,7 @@ module core import common::*;(
 	logic       commit_wen;
 	logic [7:0] commit_wdest;
 	word_t      commit_wdata;
+	logic       commit_skip;
 	word_t      gpr [0:31];
 
 	Top u_top (
@@ -39,6 +40,7 @@ module core import common::*;(
 		.commit_wen_o   ( commit_wen ),
 		.commit_wdest_o ( commit_wdest ),
 		.commit_wdata_o ( commit_wdata ),
+		.commit_skip_o  ( commit_skip ),
 		.gpr_o          ( gpr )
 	);
 
@@ -50,7 +52,7 @@ module core import common::*;(
 		.valid              (commit_valid),   // 0 代表无提交
 		.pc                 (commit_pc),      // 这条指令的 pc
 		.instr              (commit_instr),   // 这条指令的内容
-		.skip               ((mem & memaddr[31] == 0)),
+		.skip               (commit_skip),   // load/store 打到外设 MMIO 区（addr[31]==0）时跳过 Difftest 对账
 		.isRVC              (0),              // 无需改动
 		.scFailed           (0),              // 无需改动
 		.wen                (commit_wen),     // 是否写入 GPR

@@ -71,8 +71,9 @@ module MEM_Stage (
             mem_2_wb     <= '0;
         end
         else if (!stall && is_mem_ready) begin
-            inst_ctx_out     <= inst_ctx_in;
-            mem_2_wb.rd_data <= rd_data;
+            inst_ctx_out      <= inst_ctx_in;
+            mem_2_wb.rd_data  <= rd_data;
+            mem_2_wb.mem_addr <= ex_2_mem.ex_result;  // 供 commit 层做 Difftest skip 判定
         end
     end
 

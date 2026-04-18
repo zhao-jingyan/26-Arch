@@ -64,6 +64,7 @@ package top_pkg;
     // MEM → WB：MEM 末尾流水寄存器的业务输出
     typedef struct packed {
         u64 rd_data;     // load 走对齐后的 load_data，其他走 ex_result
+        u64 mem_addr;    // load/store 访存地址（= ex_2_mem.ex_result），非访存指令无意义；供 Difftest skip 判定
     } MEM_2_WB;
 
     // ID → FWD：供 Forward_Unit 判定与默认回退（ID/EX 寄存器 tap）

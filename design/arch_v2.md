@@ -623,7 +623,7 @@ MEM Stage 自身直接与 `dbus` 连接。EX/MEM 流水线寄存器在 EX 内部
 | 端口 | 方向 | 说明 |
 | --- | --- | --- |
 | `inst_ctx_out` | output | 透传，类型 `INST_CTX` |
-| `mem_2_wb` | output | MEM/WB 流水寄存器输出，类型 `MEM_2_WB`，含 `rd_data` |
+| `mem_2_wb` | output | MEM/WB 流水寄存器输出，类型 `MEM_2_WB`，含 `rd_data`（写回数据）与 `mem_addr`（访存地址，供 commit 层做 Difftest skip 判定） |
 | `mem_2_fwd` | output | MEM/WB 寄存器 tap，类型 `MEM_2_FWD`，供 Forward_Unit 做 distance-2 RAW forward |
 
 #### mem_2_ctrl_feedback（本轮裸端口，未来收进控制层）
@@ -668,7 +668,7 @@ flowchart LR
 - **dbus 合约保证**：`valid` 拉到 `data_ok` 之间 `addr/size/strobe/data` 必须稳定——由 MEM 向上游传 `is_mem_ready=0` 让 EX/MEM 寄存器保持、`ex_2_mem.ex_result / rs2_data` 不变来天然保证
 - **rd mux**：`is_load ? load_data : ex_2_mem.ex_result`；store 无 rd 写回（Decoder 已清零 `rd_addr`），`rd_data` 值无意义
 - **单槽 latch**：`{latched_pc, latched_inst, latched_data, latched_valid}` 记录"本指令访存已完成"；在 `is_response_valid && !is_mem_ready` 的周期写入；store 的 `latched_data` 无意义，仅用 `latched_valid` 表 done
-- **MEM/WB 寄存器更新条件**：`!stall && is_mem_ready` 时 latch `inst_ctx_in` → `inst_ctx_out`、`rd_data` → `mem_2_wb.rd_data`；复位清零
+- **MEM/WB 寄存器更新条件**：`!stall && is_mem_ready` 时 latch `inst_ctx_in` → `inst_ctx_out`、`rd_data` → `mem_2_wb.rd_data`、`ex_2_mem.ex_result` → `mem_2_wb.mem_addr`（供 commit 层做 Difftest skip 判定；非访存指令该字段无意义）；复位清零
 - **opcode 判别**：MEM_Stage 内 `import ID_PKG::*;` 以复用 `OP_LOAD` / `OP_STORE` 常量；`ID_PKG` 不经 `top_pkg` 透出，仅 ID 与 MEM 两个 stage 内部使用
 
 ### 3.5 WB Stage
@@ -811,6 +811,7 @@ v2 五段流水线的装配层。对外保持与 v1 `Top` 一致的接口（`ibu
 | `dbus_req_o` | output | dbus 请求（MEM 透传） |
 | `commit_valid_o / commit_pc_o / commit_instr_o` | output | Difftest 提交信息 |
 | `commit_wen_o / commit_wdest_o / commit_wdata_o` | output | Difftest 写回三元组 |
+| `commit_skip_o` | output | Difftest skip 标志：提交指令为 load/store 且 `mem_addr[31] == 0`（外设 MMIO 区）时为 1，Difftest 据此跳过对账并直接采用本 CPU 的状态 |
 | `gpr_o` | output | `u64 [0:31]` RegFile 快照 |
 
 #### 3.8.1 关键设计点
@@ -821,6 +822,7 @@ v2 五段流水线的装配层。对外保持与 v1 `Top` 一致的接口（`ibu
   - `commit_valid = (prev.inst != 0) && (mem != prev)`：MEM/WB 寄存器发生推进时拉高；reset 后 prev=0 自然屏蔽，pipeline 冻结时 `mem == prev` 也自然屏蔽，不会重复提交
   - `commit_wen = (prev.rd_addr != 0)`：S/B-type 在 Decoder 已清零 `rd_addr`，x0 写入 RegFile 内部亦屏蔽
   - `commit_wdest = {3'b0, prev.rd_addr}` 扩展到 `u8` 以匹配 Difftest 接口
+  - `commit_skip = (prev.opcode == OP_LOAD \|\| prev.opcode == OP_STORE) && (prev.mem_addr[31] == 0)`：仅对打到外设 MMIO 区的访存指令置 1，让 Difftest 跳过对账并采用本 CPU 状态；非访存指令与落在 DRAM 区的访存指令严格为 0。Top 为此 `import ID_PKG::*;` 复用 `OP_LOAD / OP_STORE` 常量。
 - **core.sv 接线切换**：v1 `vsrc/src/Top.sv` 不再编译；`vsrc/src/core.sv` 把 `` `include `` 从 `src/Top.sv` 改为 `src_new/Top.sv`（此处是 v1 目录唯一允许的修改点，参见 §1.1）。
 
 #### 3.8.2 装配示意

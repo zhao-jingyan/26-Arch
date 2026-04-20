@@ -102,9 +102,10 @@ module ALU_Divider (
                 end
 
                 COMPUTE: begin
-                    u65 sub_res;
-                    u64 next_rem = {remainder_reg[62:0], quotient_reg[63]};
-                    sub_res = {1'b0, next_rem} - {1'b0, divisor};
+                    automatic u65 sub_res;
+                    automatic u64 next_rem;
+                    next_rem = {remainder_reg[62:0], quotient_reg[63]};
+                    sub_res  = {1'b0, next_rem} - {1'b0, divisor};
 
                     if (sub_res[64]) begin
                         remainder_reg <= next_rem;

@@ -9,8 +9,7 @@
 
 ## 项目结构
 
-- **v2 源代码（当前开发）**：`vsrc/src_new/`
-- **v1 源代码（只读参考）**：`vsrc/src/`
+- **RTL 主目录（v2 约定）**：`vsrc/src/`
 - **公共定义**：`vsrc/include/`、`vsrc/util/`
 - **设计文档**：`design/`，总纲见 `design/arch_v2.md`
 
@@ -24,18 +23,16 @@
 
 ---
 
-## 并行代码库约定
+## 代码库约定
 
-本项目正在做 v1 → v2 重构：
+v1 → v2 迁移**已完成**：实现统一在 `vsrc/src/`，全局约定（命名、接口、system_input、bundle 等）以 `design/arch_v2.md` 为准；本规则与该文档冲突时以文档为准。
 
-- `vsrc/src/`（v1）**只读**，作为参考实现，不再修改。
-- `vsrc/src_new/`（v2）是新代码库，所有新写与修改都发生在此。
-- **不得**把 v1 命名风格（`_i / _o / _q` 后缀等）带进 v2。
-- v2 的全局约定（命名、接口、system_input 等）以 `design/arch_v2.md` 为准；本规则与该文档冲突时以文档为准。
+- **不得**使用已废弃的 v1 端口/寄存器命名风格（`_i` / `_o` / `_q` / `_d` 后缀等）。
+- 历史 v1 树若仍存在于备份或旧分支，仅作对照，**不以**其为当前维护目标。
 
 ---
 
-## 变量命名规范（v2）
+## 变量命名规范（与 arch_v2 一致）
 
 ### 核心原则
 
@@ -85,7 +82,7 @@ module Example (
 - **模块名**：PascalCase，可带子单元前缀（如 `ALU_Core`、`IF_Stage`）
 - **复位**：`rst_n` 低有效
 
-> 脚注：`vsrc/include/common.sv` 里既有的 `addr_t / word_t / cbus_req_t / ibus_req_t / ibus_resp_t / dbus_req_t / dbus_resp_t / msize_t` 等 v1 遗留类型保留 `_t` 后缀，不在本轮重命名范围，v2 代码可继续使用。
+> 脚注：`vsrc/include/common.sv` 里既有的 `addr_t / word_t / cbus_req_t / ibus_req_t / ibus_resp_t / dbus_req_t / dbus_resp_t / msize_t` 等类型保留 `_t` 后缀，不在重命名范围，当前代码可继续使用。
 
 ---
 
@@ -99,8 +96,8 @@ module Example (
 
 ## 工作流程
 
-- 新代码 → 写入 `vsrc/src_new/` 下相应模块
-- 设计文档 → 写入 `design/` 目录，v2 总纲更新至 `design/arch_v2.md`
+- 新代码与修改 → 写入 `vsrc/src/` 下相应模块
+- 设计文档 → 写入 `design/` 目录，总纲维护 `design/arch_v2.md`
 - 文档格式使用 Markdown
 
 ## 设计文档书写规范

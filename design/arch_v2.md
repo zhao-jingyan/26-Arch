@@ -1,6 +1,36 @@
-# 架构 v2 设计总纲
+# LAB 3实验报告
 
-本文档是项目重构（v2）的总纲，记录目录布局、全局命名与接口约定、各 stage 的模块边界**规约**，以及尚未敲定的遗留问题。
+## 概况
+
+LAB3进行了完全重构。通过划定模块边界，给出模块接口，规范命名方式，逐步迁移模块的方式，我们借助AI将旧代码迁移到了新代码。经过以上工作，解决了以下问题：
+
+1. lab2遇到了ibus / dbus竞争问题，当时使用AI debug，后得知问题（应该）来自dbus未开启随机化。AI debug时代码出现了严重的，针对这个问题的过拟合，变得不可维护。
+2. 项目初期学习的硬件工程师喜爱的_i，_o等命名方式，又混杂了我喜欢的alu stage，inst等名称，ai生成的代码可读性极差。
+3. 模块边界不够清晰，理解成本高
+
+重构后的代码有以下优点：
+
+1. 不再是过拟合的代码，而是干净的新代码。
+2. 命名更加“软件风格”，对于stage我们使用了术语，模块间打包为 X_2_Y，清晰易读，线的名称更加语义化，便于理解。对于WB，我们单独维护了一个Stage，虽然是纯连线
+3. 清楚的划分了Control Unit和Hazard Control，使关注点分离，代码解耦，可维护性变强。
+
+重构后，我们将乘除法模块放进了alu，现在使用的是最原始的方式，即直接stall。后续会考虑做一些并行 / 优化
+
+## 测试情况
+
+跑完了回归测试，test lab1 ，lab2，lab3，lab1-extra，lab3-extra均通过
+
+## 上板
+
+程序在MacOS编写，通过git同步到一台ubuntu，在ubuntu上调试vivado，vivado版本为2018.3，run simulation遇到编译问题，借win设备测试可通过，怀疑是ubuntu环境问题。上板使用cutecom做串口监测，成功通过，下为截图：
+
+![](./上板.jpeg)
+
+---
+
+## 附录： 架构 v2 设计总纲
+
+本文档是项目重构过程中AI生成的总纲，记录目录布局、全局命名与接口约定、各 stage 的模块边界**规约**，以及尚未敲定的遗留问题。
 
 > 已落地的 stage 当前**实际**接口快照见 [implemented_stages.md](implemented_stages.md)。本文偏"应当如何"，那份偏"当前是什么"。
 
@@ -876,7 +906,4 @@ flowchart LR
   - **消费者 rs 使用精化**：当前 `load_use_hazard` 只看 `rd_addr == rs*_addr`，未考虑消费者是否真读 rs1/rs2（LUI/AUIPC 不读 rs1；OP-IMM/load/store/U/J 不读 rs2）。引入 `is_rs1_used / is_rs2_used` flag 可少 stall 几拍。
   - **store 的 MEM→MEM bypass**：`lw x3; sw x3, 0(x4)` 场景中，store 的 rs2 到 MEM 才消费，理论上加一条 MEM→MEM 旁路即可免 stall；当前直接按 rs2 比对拉 stall。
 - **控制反馈 bundle 化**：EX 的 `pc_should_jump / pc_jump_address` 与 MEM 的 `is_mem_ready` 当前仍是裸端口，待控制层后续形态明确后可并入 `EX_2_CTRL`（已建）/ `MEM_2_CTRL`（待建）。
-- **flush 语义**：已落地。EX 段决出 `ex_pc_should_jump` 当拍，Control_Unit 同拍把 `flush_if_id`（清 IF/ID）与 `insert_bubble`（清 ID/EX）一起拉高，覆盖 branch/jal/jalr 后两槽 wrong-path 指令。`insert_bubble` 与 load-use 共用一根线（互斥）。后续若引入 trap / misprediction 修正，可在 Control_Unit 内部把两根输出的来源 OR 上更多源。
-- **commit 接口类型化**：`commit_*` 目前散端口，对齐 v1 `Top`。未来可抽成 `COMMIT` struct（含 `pc / inst / wen / rd_addr / rd_data`）统一走。
 - **INST_CTX 是否细化**：目前 `INST_CTX.opcode` 原样随流，MEM 识别 load/store 用。未来若换成 `is_load / is_store / is_branch / is_jump` 等语义化 flag 并归到独立的 `MEM_CTRL` bundle，随 hazard 检测一起决定。
-- **乘除法**：`MUL/DIV/REM` 及 FSM 状态 `ALU_STATE` 暂不迁移，`ALU_OP_CODE` 已预留 `4'd10..4'd15` 槽位，待乘除法回归时填回。

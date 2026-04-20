@@ -100,9 +100,11 @@ package top_pkg;
     } ID_2_CTRL;
 
     // EX → 控制层：供 load-use 检测的 EX 位当前指令信息（组合，源自 ID/EX 寄存器输出）
+    // is_alu_busy 由 ALU_Core 直出，乘除法运行期间为 1，触发全流水冻结
     typedef struct packed {
         logic is_ex_load;   // EX 位指令是否为 load
         u5    rd_addr;      // EX 位指令的 rd
+        logic is_alu_busy;  // ALU 多周期单元（乘除法）正在运行
     } EX_2_CTRL;
 
 endpackage

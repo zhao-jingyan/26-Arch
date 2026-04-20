@@ -72,8 +72,18 @@ module Decoder (
 
             OP: begin
                 alu_inst_type = NORM;
-                // funct7_m 是乘除法，本轮不支持；走 default（ADD）也无所谓
-                if (funct7 != FUNCT7_M) begin
+                if (funct7 == FUNCT7_M) begin
+                    // RV64M：MUL/MULH/MULHSU/MULHU/DIV/DIVU/REM/REMU
+                    unique case (funct3)
+                        3'b000: alu_op_code = MUL;                      // mul
+                        3'b100: alu_op_code = DIV;                      // div
+                        3'b101: alu_op_code = DIVU;                     // divu
+                        3'b110: alu_op_code = REM;                      // rem
+                        3'b111: alu_op_code = REMU;                     // remu
+                        default: ;
+                    endcase
+                end
+                else begin
                     unique case (funct3)
                         3'b000: alu_op_code = funct7[5] ? SUB : ADD;    // sub / add
                         3'b100: alu_op_code = XOR;                      // xor
@@ -101,7 +111,18 @@ module Decoder (
 
             OP_32: begin
                 alu_inst_type = WORD;
-                if (funct7 != FUNCT7_M) begin
+                if (funct7 == FUNCT7_M) begin
+                    // RV64M 字版本：MULW/DIVW/DIVUW/REMW/REMUW
+                    unique case (funct3)
+                        3'b000: alu_op_code = MUL;                      // mulw
+                        3'b100: alu_op_code = DIV;                      // divw
+                        3'b101: alu_op_code = DIVU;                     // divuw
+                        3'b110: alu_op_code = REM;                      // remw
+                        3'b111: alu_op_code = REMU;                     // remuw
+                        default: ;
+                    endcase
+                end
+                else begin
                     unique case (funct3)
                         3'b000: alu_op_code = funct7[5] ? SUB : ADD;    // subw / addw
                         3'b001: alu_op_code = SLL;                      // sllw

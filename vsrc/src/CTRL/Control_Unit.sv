@@ -35,8 +35,11 @@ module Control_Unit (
     output u64       pc_jump_address
 );
 
+    // 全局阻塞：取指未就绪 / 访存未就绪 / ALU 多周期单元（乘除法）忙
     logic pipeline_stall;
-    assign pipeline_stall = !if_2_ctrl.is_inst_ready || !is_mem_ready;
+    assign pipeline_stall = !if_2_ctrl.is_inst_ready
+                          || !is_mem_ready
+                          || ex_2_ctrl.is_alu_busy;
 
     // load-use 冒险：EX 位是 load，且其 rd 与 ID 位消费者 rs1/rs2 匹配（rd != 0）
     logic load_use_hazard;

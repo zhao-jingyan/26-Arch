@@ -7,18 +7,27 @@
 `define EX_PKG
 
 package EX_PKG;
-    // ALU 操作码；位宽 4 位，未来乘除法回归时填空闲槽位
-    typedef enum logic [3:0] {
-        ADD  = 4'd0,
-        SUB  = 4'd1,
-        AND  = 4'd2,
-        OR   = 4'd3,
-        XOR  = 4'd4,
-        SLL  = 4'd5,
-        SRL  = 4'd6,
-        SRA  = 4'd7,
-        SLT  = 4'd8,
-        SLTU = 4'd9
+    // ALU 操作码；位宽 5 位
+    // 0..9 是单周期算术 / 逻辑 / 移位 / 比较
+    // 10..14 是多周期乘除法（MUL / DIV / DIVU / REM / REMU），WORD 版本复用 ALU_INST=WORD
+    // MULH / MULHU / MULHSU 暂未支持
+    typedef enum logic [4:0] {
+        ADD  = 5'd0,
+        SUB  = 5'd1,
+        AND  = 5'd2,
+        OR   = 5'd3,
+        XOR  = 5'd4,
+        SLL  = 5'd5,
+        SRL  = 5'd6,
+        SRA  = 5'd7,
+        SLT  = 5'd8,
+        SLTU = 5'd9,
+
+        MUL  = 5'd10,
+        DIV  = 5'd11,
+        DIVU = 5'd12,
+        REM  = 5'd13,
+        REMU = 5'd14
     } ALU_OP_CODE;
 
     // ALU 操作宽度：NORM = 64-bit，WORD = 32-bit 低位运算结果 sext 回 64

@@ -52,16 +52,22 @@ module EX_Stage (
 
     // 三个子单元
     u64   alu_core_res;
+    logic is_alu_busy;
     logic is_branch_taken;
     u64   pc_plus_4;
     u64   jump_target;
 
     ALU_Core u_alu_core (
+        .clk          ( clk ),
+        .rst_n        ( rst_n ),
+
         .op_code      ( id_2_ex.alu_op_code ),
         .inst_type    ( id_2_ex.alu_inst_type ),
         .alu_input_1  ( alu_input_1 ),
         .alu_input_2  ( alu_input_2 ),
-        .alu_core_res ( alu_core_res )
+
+        .alu_core_res ( alu_core_res ),
+        .is_alu_busy  ( is_alu_busy )
     );
 
     Branch_Unit u_branch_unit (
@@ -118,7 +124,9 @@ module EX_Stage (
     assign ex_2_fwd.ex_result = ex_2_mem.ex_result;
 
     // EX → 控制层：EX 位当前指令（即 ID/EX 寄存器输出）的 load / rd 信息，供 load-use 检测
-    assign ex_2_ctrl.is_ex_load = (inst_ctx_in.opcode == OP_LOAD);
-    assign ex_2_ctrl.rd_addr    = inst_ctx_in.rd_addr;
+    // is_alu_busy 由 ALU_Core 直接给出，乘除法运行期间触发全流水冻结
+    assign ex_2_ctrl.is_ex_load  = (inst_ctx_in.opcode == OP_LOAD);
+    assign ex_2_ctrl.rd_addr     = inst_ctx_in.rd_addr;
+    assign ex_2_ctrl.is_alu_busy = is_alu_busy;
 
 endmodule

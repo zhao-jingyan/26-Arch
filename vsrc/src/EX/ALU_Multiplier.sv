@@ -6,8 +6,10 @@
 //               MULH / MULHU / MULHSU 暂不支持（不暴露 product 上半截）
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/EX/EX_PKG.sv"
 `include "src/EX/ALU_PKG.sv"
+`endif
 
 import common::*;
 import EX_PKG::*;
@@ -133,10 +135,15 @@ module ALU_Multiplier (
 
     // 取符号 + WORD/NORM 输出选择
     always_comb begin
-        automatic u64 product_abs    = product[63:0];
-        automatic u64 signed_product = res_sign ? (~product_abs + 1'b1) : product_abs;
+        automatic u64 product_abs;
+        automatic u64 signed_product;
+        automatic u32 res32;
+
+        product_abs    = product[63:0];
+        signed_product = res_sign ? (~product_abs + 1'b1) : product_abs;
+        res32          = signed_product[31:0];
+
         if (is_word) begin
-            automatic u32 res32 = signed_product[31:0];
             mul_res = {{32{res32[31]}}, res32};
         end else begin
             mul_res = signed_product;

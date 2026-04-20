@@ -5,7 +5,9 @@
 //               JALR     : target = (rs1 + imm) & ~1
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/EX/EX_PKG.sv"
+`endif
 
 import common::*;
 import EX_PKG::*;

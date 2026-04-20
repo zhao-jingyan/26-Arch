@@ -10,7 +10,9 @@
 //                 → PC 重定向到 ex_pc_jump_address
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/top_pkg.sv"
+`endif
 
 import common::*;
 import top_pkg::*;

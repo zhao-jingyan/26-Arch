@@ -3,7 +3,9 @@
 // Description : 取指单元；缓存当前 PC 对应的指令，驱动 InstructionMemory 请求 ibus
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/IF/InstructionMemory.sv"
+`endif
 
 import common::*;
 

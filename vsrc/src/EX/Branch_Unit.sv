@@ -3,7 +3,9 @@
 // Description : 根据 BRANCH_OP 与 rs1/rs2 输出 is_branch_taken，纯组合
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/EX/EX_PKG.sv"
+`endif
 
 import common::*;
 import EX_PKG::*;

@@ -3,8 +3,10 @@
 // Description : RISC-V 指令字译码；纯组合。输出 ALU 控制 + 分支/跳转/rd 源 flag
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/ID/ID_PKG.sv"
 `include "src/EX/EX_PKG.sv"
+`endif
 
 import common::*;
 import ID_PKG::*;

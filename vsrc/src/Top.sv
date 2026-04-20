@@ -5,6 +5,7 @@
 //               commit 信号按 v1 做法：MEM/WB 寄存器 + 1-cycle prev 比较，检测"推进"沿
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/top_pkg.sv"
 `include "src/ID/ID_PKG.sv"
 `include "src/IF/IF_Stage.sv"
@@ -14,6 +15,7 @@
 `include "src/WB/WB_Stage.sv"
 `include "src/CTRL/Control_Unit.sv"
 `include "src/CTRL/Forward_Unit.sv"
+`endif
 
 import common::*;
 import top_pkg::*;

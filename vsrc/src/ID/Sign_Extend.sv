@@ -3,7 +3,9 @@
 // Description : 按 opcode 拼 I/S/B/U/J 五种 imm 并 sext 到 64 位，纯组合
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/ID/ID_PKG.sv"
+`endif
 
 import common::*;
 import ID_PKG::*;

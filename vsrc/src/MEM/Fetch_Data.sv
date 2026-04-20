@@ -3,7 +3,9 @@
 // Description : 访存单元；funct3 字节对齐 + 单槽 latch，驱动 DataMemory 请求 dbus
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/MEM/DataMemory.sv"
+`endif
 
 import common::*;
 

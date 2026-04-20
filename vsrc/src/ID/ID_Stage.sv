@@ -4,10 +4,12 @@
 //               ID 不做 op1/op2 mux（v2 规约：mux 在 EX 做）
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/top_pkg.sv"
 `include "src/ID/Decoder.sv"
 `include "src/ID/RegFile.sv"
 `include "src/ID/Sign_Extend.sv"
+`endif
 
 import common::*;
 import top_pkg::*;

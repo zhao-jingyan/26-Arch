@@ -3,7 +3,9 @@
 // Description : WB Stage 顶层：纯组合，将 MEM 输出打包成 wb_2_id 送回 ID 写回 RegFile
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/top_pkg.sv"
+`endif
 
 import common::*;
 import top_pkg::*;

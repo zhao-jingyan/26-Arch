@@ -5,11 +5,13 @@
 //               pc_should_jump / pc_jump_address 为组合直出，当拍反馈给 IF
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/top_pkg.sv"
 `include "src/ID/ID_PKG.sv"
 `include "src/EX/ALU_Core.sv"
 `include "src/EX/Branch_Unit.sv"
 `include "src/EX/PC_Target.sv"
+`endif
 
 import common::*;
 import top_pkg::*;

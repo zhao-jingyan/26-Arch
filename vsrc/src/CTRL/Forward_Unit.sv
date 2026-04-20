@@ -7,7 +7,9 @@
 //               IF/ID 化为 distance-2，下一拍走 MEM_2_FWD 路径
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/top_pkg.sv"
+`endif
 
 import common::*;
 import top_pkg::*;

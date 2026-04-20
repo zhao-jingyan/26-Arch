@@ -4,9 +4,11 @@
 //               is_mem_ready 为裸端口反馈忙状态，未来并入控制层
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/top_pkg.sv"
 `include "src/ID/ID_PKG.sv"
 `include "src/MEM/Fetch_Data.sv"
+`endif
 
 import common::*;
 import top_pkg::*;

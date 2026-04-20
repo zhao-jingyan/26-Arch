@@ -3,9 +3,11 @@
 // Description : IF Stage 顶层：装配 PC + Inst_Fetch + IF/ID 流水线寄存器
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/top_pkg.sv"
 `include "src/IF/PC.sv"
 `include "src/IF/Inst_Fetch.sv"
+`endif
 
 import common::*;
 import top_pkg::*;

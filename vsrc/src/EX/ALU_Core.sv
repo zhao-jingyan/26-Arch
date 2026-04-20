@@ -8,9 +8,11 @@
 //                          DONE 拍 is_alu_busy 降沿 + alu_core_res 出值，EX/MEM 当拍 latch
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/EX/EX_PKG.sv"
 `include "src/EX/ALU_Multiplier.sv"
 `include "src/EX/ALU_Divider.sv"
+`endif
 
 import common::*;
 import EX_PKG::*;

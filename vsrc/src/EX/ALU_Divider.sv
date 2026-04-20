@@ -6,8 +6,10 @@
 //                                     有符号溢出（INT_MIN / -1 → quotient=INT_MIN, remainder=0）
 // ----------------------------------------------------------------------------
 
+`ifdef VERILATOR
 `include "src/EX/EX_PKG.sv"
 `include "src/EX/ALU_PKG.sv"
+`endif
 
 import common::*;
 import EX_PKG::*;
@@ -140,8 +142,9 @@ module ALU_Divider (
     always_comb begin
         automatic u64   q_final;
         automatic u64   r_final;
-        automatic logic overflow_detected = 1'b0;
+        automatic logic overflow_detected;
 
+        overflow_detected = 1'b0;
         q_final = res_sign ? (~quotient_reg  + 1'b1) : quotient_reg;
         r_final = rem_sign ? (~remainder_reg + 1'b1) : remainder_reg;
 

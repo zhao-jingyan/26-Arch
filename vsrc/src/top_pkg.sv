@@ -6,7 +6,9 @@
 `ifndef TOP_PKG
 `define TOP_PKG
 
+`ifdef VERILATOR
 `include "src/EX/EX_PKG.sv"
+`endif
 
 import common::*;
 import EX_PKG::*;

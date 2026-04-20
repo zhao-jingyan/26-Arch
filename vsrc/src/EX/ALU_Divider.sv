@@ -41,6 +41,14 @@ module ALU_Divider (
     logic     rem_sign;
     logic     is_word;
 
+    // is_word / res_sign / rem_sign / divisor 的 next 信号
+    // 拆出来单独做纯 D 触发器 + 异步复位，避免 Vivado 把 IDLE 分支里
+    // 可能为 0 或 1 的赋值识别成同步 set / reset，与 rst_n 冲突
+    logic is_word_next;
+    logic res_sign_next;
+    logic rem_sign_next;
+    u64   divisor_next;
+
     u64   op1_abs, op2_abs;
     logic op1_sign, op2_sign;
     assign op1_sign = (inst_type == WORD) ? op1[31] : op1[63];
@@ -80,6 +88,36 @@ module ALU_Divider (
         else        is_div_done <= is_div_done_next;
     end
 
+    // is_word / res_sign / rem_sign / divisor 仅在 IDLE 接受 div_start 时更新
+    // 其它时刻保持旧值；div_cancel 不清它们（下次 IDLE 接新任务时会覆盖）
+    always_comb begin
+        is_word_next  = is_word;
+        res_sign_next = res_sign;
+        rem_sign_next = rem_sign;
+        divisor_next  = divisor;
+        if ((state == IDLE) && div_start && !div_cancel) begin
+            is_word_next  = (inst_type == WORD);
+            res_sign_next = is_signed & (op1_sign ^ op2_sign);
+            rem_sign_next = is_signed & op1_sign;
+            divisor_next  = op2_abs;
+        end
+    end
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            is_word  <= 1'b0;
+            res_sign <= 1'b0;
+            rem_sign <= 1'b0;
+            divisor  <= 64'b0;
+        end
+        else begin
+            is_word  <= is_word_next;
+            res_sign <= res_sign_next;
+            rem_sign <= rem_sign_next;
+            divisor  <= divisor_next;
+        end
+    end
+
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state         <= IDLE;
@@ -96,12 +134,8 @@ module ALU_Divider (
                     if (div_start) begin
                         state         <= COMPUTE;
                         count         <= 7'd63;
-                        is_word       <= (inst_type == WORD);
-                        res_sign      <= is_signed & (op1_sign ^ op2_sign);
-                        rem_sign      <= is_signed & op1_sign;
                         remainder_reg <= 64'b0;
                         quotient_reg  <= op1_abs;
-                        divisor       <= op2_abs;
 
                         // 异常提前结束
                         if (op2_abs == 64'b0) begin

@@ -69,6 +69,17 @@ module ALU_Divider (
         end
     end
 
+    // is_div_done 单独拆一个 DFF:仅异步复位 + 纯 D 输入
+    // 避免 Vivado 在合并的 always_ff 里把 DONE→1 和 div_cancel/IDLE→0 分别识别
+    // 为同步 set 与同步 reset 引脚,从而报 "set and reset have same priority"
+    logic is_div_done_next;
+    assign is_div_done_next = (state == DONE) && !div_cancel;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) is_div_done <= 1'b0;
+        else        is_div_done <= is_div_done_next;
+    end
+
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state         <= IDLE;

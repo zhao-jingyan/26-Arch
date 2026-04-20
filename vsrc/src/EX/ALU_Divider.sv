@@ -75,16 +75,13 @@ module ALU_Divider (
             count         <= 7'd0;
             quotient_reg  <= 64'b0;
             remainder_reg <= 64'b0;
-            is_div_done   <= 1'b0;
         end
         else if (div_cancel) begin
-            state       <= IDLE;
-            is_div_done <= 1'b0;
+            state <= IDLE;
         end
         else begin
             case (state)
                 IDLE: begin
-                    is_div_done <= 1'b0;
                     if (div_start) begin
                         state         <= COMPUTE;
                         count         <= 7'd63;
@@ -127,8 +124,7 @@ module ALU_Divider (
                 end
 
                 DONE: begin
-                    is_div_done <= 1'b1;
-                    state       <= IDLE;
+                    state <= IDLE;
                 end
 
                 default: state <= IDLE;

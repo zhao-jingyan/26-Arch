@@ -43,11 +43,12 @@ module ALU_Multiplier (
     assign op1_sign = (inst_type == WORD) ? op1[31] : op1[63];
     assign op2_sign = (inst_type == WORD) ? op2[31] : op2[63];
 
+    // WORD 场景需在 32 位内取反+1，再零扩到 64 位，否则高 32 位会被污染
     always_comb begin
         if (is_signed) begin
             if (inst_type == WORD) begin
-                op1_abs = op1_sign ? (~{32'b0, op1[31:0]} + 1'b1) : {32'b0, op1[31:0]};
-                op2_abs = op2_sign ? (~{32'b0, op2[31:0]} + 1'b1) : {32'b0, op2[31:0]};
+                op1_abs = op1_sign ? {32'b0, (~op1[31:0] + 1'b1)} : {32'b0, op1[31:0]};
+                op2_abs = op2_sign ? {32'b0, (~op2[31:0] + 1'b1)} : {32'b0, op2[31:0]};
             end else begin
                 op1_abs = op1_sign ? (~op1 + 1'b1) : op1;
                 op2_abs = op2_sign ? (~op2 + 1'b1) : op2;

@@ -5,11 +5,13 @@
 
 `ifdef VERILATOR
 `include "src/ID/ID_PKG.sv"
+`include "src/ID/CSR_PKG.sv"
 `include "src/EX/EX_PKG.sv"
 `endif
 
 import common::*;
 import ID_PKG::*;
+import CSR_PKG::*;
 import EX_PKG::*;
 
 module Decoder (
@@ -28,7 +30,14 @@ module Decoder (
 
     output BRANCH_OP   branch_op,
     output JUMP_TYPE   jump_type,
-    output RD_SRC      rd_src
+    output RD_SRC      rd_src,
+
+    // CSR 相关（Zicsr）
+    output logic       is_csr,        // 当前是否 CSR 指令
+    output logic       is_csr_imm,    // CSRRWI/CSRRSI/CSRRCI（rs1 字段是立即数）
+    output CSR_OP      csr_op,        // CSR 操作类型
+    output u12         csr_addr,      // CSR 地址 = inst[31:20]
+    output u5          csr_uimm       // 5-bit zero-extended uimm = inst[19:15]
 );
 
     u3  funct3;
@@ -45,6 +54,10 @@ module Decoder (
     assign rs1_addr = inst[19:15];
     assign rs2_addr = inst[24:20];
 
+    // CSR 字段：地址固定取 inst[31:20]，uimm 取 inst[19:15]
+    assign csr_addr = inst[31:20];
+    assign csr_uimm = inst[19:15];
+
     always_comb begin
         alu_op_code   = ADD;
         alu_inst_type = NORM;
@@ -54,6 +67,9 @@ module Decoder (
         branch_op     = BR_NONE;
         jump_type     = JT_NONE;
         rd_src        = RD_FROM_ALU;
+        is_csr        = 1'b0;
+        is_csr_imm    = 1'b0;
+        csr_op        = CSR_NONE;
 
         unique case (opcode_w)
             OP_IMM: begin
@@ -182,6 +198,24 @@ module Decoder (
                 jump_type  = JT_JALR;
                 rd_src     = RD_FROM_PC_PLUS_4;
                 is_op2_imm = 1'b1;  // PC_Target 用 rs1+imm，与 ALU 无关
+            end
+
+            OP_SYSTEM: begin
+                // Zicsr：CSRRW/RS/RC/RWI/RSI/RCI；rd 写回 = CSR 旧值
+                // 其它 SYSTEM 指令（ECALL/EBREAK/MRET 等）暂不实现，走 default
+                rd_src = RD_FROM_CSR;
+                unique case (funct3)
+                    FUNCT3_CSRRW:  begin is_csr = 1'b1; csr_op = CSR_RW;  end
+                    FUNCT3_CSRRS:  begin is_csr = 1'b1; csr_op = CSR_RS;  end
+                    FUNCT3_CSRRC:  begin is_csr = 1'b1; csr_op = CSR_RC;  end
+                    FUNCT3_CSRRWI: begin is_csr = 1'b1; csr_op = CSR_RWI; is_csr_imm = 1'b1; end
+                    FUNCT3_CSRRSI: begin is_csr = 1'b1; csr_op = CSR_RSI; is_csr_imm = 1'b1; end
+                    FUNCT3_CSRRCI: begin is_csr = 1'b1; csr_op = CSR_RCI; is_csr_imm = 1'b1; end
+                    default: begin
+                        // 非 Zicsr 的 SYSTEM 指令：当前不识别，回退为 NOP
+                        rd_src = RD_FROM_ALU;
+                    end
+                endcase
             end
 
             default: ;

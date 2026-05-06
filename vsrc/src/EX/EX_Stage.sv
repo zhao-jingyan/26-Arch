@@ -89,11 +89,12 @@ module EX_Stage (
         .jump_target     ( jump_target )
     );
 
-    // rd mux：ALU 结果 vs PC+4
+    // rd mux：ALU 结果 / PC+4 / CSR 旧值
     u64 ex_result;
     always_comb begin
         unique case (id_2_ex.rd_src)
             RD_FROM_PC_PLUS_4: ex_result = pc_plus_4;
+            RD_FROM_CSR:       ex_result = id_2_ex.csr_old;
             default:           ex_result = alu_core_res;
         endcase
     end

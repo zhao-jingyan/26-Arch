@@ -6,13 +6,16 @@
 
 `ifdef VERILATOR
 `include "src/top_pkg.sv"
+`include "src/ID/CSR_PKG.sv"
 `include "src/ID/Decoder.sv"
 `include "src/ID/RegFile.sv"
 `include "src/ID/Sign_Extend.sv"
+`include "src/ID/CSRFile.sv"
 `endif
 
 import common::*;
 import top_pkg::*;
+import CSR_PKG::*;
 
 module ID_Stage (
     input  logic     clk,
@@ -27,7 +30,8 @@ module ID_Stage (
     output ID_2_EX   id_2_ex,
     output ID_2_FWD  id_2_fwd,
     output u64       gpr [0:31],
-    output ID_2_CTRL id_2_ctrl
+    output ID_2_CTRL id_2_ctrl,
+    output CSR_STATE csr_state
 );
 
     // Decoder 输出
@@ -43,6 +47,11 @@ module ID_Stage (
     BRANCH_OP   dec_branch_op;
     JUMP_TYPE   dec_jump_type;
     RD_SRC      dec_rd_src;
+    logic       dec_is_csr;
+    logic       dec_is_csr_imm;
+    CSR_OP      dec_csr_op;
+    u12         dec_csr_addr;
+    u5          dec_csr_uimm;
 
     // RegFile 读出
     u64         rf_read_data_1;
@@ -50,6 +59,11 @@ module ID_Stage (
 
     // Sign_Extend 输出
     u64         se_imm;
+
+    // CSRFile 读出 + 写口
+    u64   csr_read_data;
+    logic csr_write_en;
+    u64   csr_write_data;
 
     Decoder u_decoder (
         .inst          ( if_2_id.inst ),
@@ -67,7 +81,13 @@ module ID_Stage (
 
         .branch_op     ( dec_branch_op ),
         .jump_type     ( dec_jump_type ),
-        .rd_src        ( dec_rd_src )
+        .rd_src        ( dec_rd_src ),
+
+        .is_csr        ( dec_is_csr ),
+        .is_csr_imm    ( dec_is_csr_imm ),
+        .csr_op        ( dec_csr_op ),
+        .csr_addr      ( dec_csr_addr ),
+        .csr_uimm      ( dec_csr_uimm )
     );
 
     RegFile u_regfile (
@@ -92,6 +112,51 @@ module ID_Stage (
         .imm    ( se_imm )
     );
 
+    // CSRFile：方案 B（ID 读 + ID 写）
+    // 读用 Decoder 当拍解出的 csr_addr；写口由下方 CSR write data mux + 写使能驱动
+    CSRFile u_csr_file (
+        .clk        ( clk ),
+        .rst_n      ( rst_n ),
+
+        .read_addr  ( dec_csr_addr ),
+        .read_data  ( csr_read_data ),
+
+        .write_en   ( csr_write_en ),
+        .write_addr ( dec_csr_addr ),
+        .write_data ( csr_write_data ),
+
+        .csr_state  ( csr_state )
+    );
+
+    // CSR 写数据：源操作数在 CSR-imm 时为 zero-extended uimm，否则为 RegFile 直读 rs1
+    // 注意方案 B 下 rs1 必须无 in-flight 写者（由 Control_Unit 通过 csr_rs1_hazard stall 保证）
+    u64 csr_src;
+    assign csr_src = dec_is_csr_imm ? {59'b0, dec_csr_uimm} : rf_read_data_1;
+
+    always_comb begin
+        unique case (dec_csr_op)
+            CSR_RW, CSR_RWI: csr_write_data = csr_src;
+            CSR_RS, CSR_RSI: csr_write_data = csr_read_data | csr_src;
+            CSR_RC, CSR_RCI: csr_write_data = csr_read_data & ~csr_src;
+            default:         csr_write_data = 64'b0;
+        endcase
+    end
+
+    // 写使能：严格遵循 CSRRS/RC/RSI/RCI 的 rs1=x0 / uimm=0 不写副作用规范
+    // stall / insert_bubble 时不能让 ID 这一拍的 CSR 写真正落地（指令并未推进）
+    logic csr_op_writes;
+    always_comb begin
+        unique case (dec_csr_op)
+            CSR_RW:           csr_op_writes = 1'b1;
+            CSR_RWI:          csr_op_writes = 1'b1;
+            CSR_RS, CSR_RC:   csr_op_writes = (dec_rs1_addr != 5'b0);
+            CSR_RSI, CSR_RCI: csr_op_writes = (dec_csr_uimm != 5'b0);
+            default:          csr_op_writes = 1'b0;
+        endcase
+    end
+
+    assign csr_write_en = dec_is_csr && csr_op_writes && !stall && !insert_bubble;
+
     // ID/EX 流水寄存器：物理上同一组，按语义拆成 inst_ctx / id_2_ex / id_2_fwd 三个输出
     // 优先级：rst_n > insert_bubble（load-use 注入 NOP）> !stall（正常推进）
     always_ff @(posedge clk or negedge rst_n) begin
@@ -110,6 +175,7 @@ module ID_Stage (
             inst_ctx.opcode          <= dec_opcode;
 
             id_2_ex.imm           <= se_imm;
+            id_2_ex.csr_old       <= csr_read_data;  // CSR 旧值，EX 在 RD_FROM_CSR 时选它
             id_2_ex.is_op1_zero   <= dec_is_op1_zero;
             id_2_ex.is_op1_pc     <= dec_is_op1_pc;
             id_2_ex.is_op2_imm    <= dec_is_op2_imm;
@@ -126,8 +192,11 @@ module ID_Stage (
         end
     end
 
-    // 控制层反馈：组合透出 ID 位当前指令（即 Decoder 输出）的 rs 号，供 load-use 检测
-    assign id_2_ctrl.rs1_addr = dec_rs1_addr;
-    assign id_2_ctrl.rs2_addr = dec_rs2_addr;
+    // 控制层反馈：组合透出 ID 位当前指令（即 Decoder 输出）的 rs 号 + CSR 标志
+    // is_csr / is_csr_imm 供 Control_Unit 做 CSR rs1 hazard 判定（仅非 imm 形式触发）
+    assign id_2_ctrl.rs1_addr   = dec_rs1_addr;
+    assign id_2_ctrl.rs2_addr   = dec_rs2_addr;
+    assign id_2_ctrl.is_csr     = dec_is_csr;
+    assign id_2_ctrl.is_csr_imm = dec_is_csr_imm;
 
 endmodule

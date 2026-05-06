@@ -3,10 +3,11 @@
 
 `ifdef VERILATOR
 `include "include/common.sv"
+`include "src/top_pkg.sv"
 `include "src/Top.sv"
 `endif
 
-module core import common::*;(
+module core import common::*; import top_pkg::*; (
 	input  logic       clk, reset,
 	output ibus_req_t  ireq,
 	input  ibus_resp_t iresp,
@@ -26,6 +27,7 @@ module core import common::*;(
 	word_t      commit_wdata;
 	logic       commit_skip;
 	word_t      gpr [0:31];
+	CSR_STATE   csr_state;
 
 	Top u_top (
 		.clk            ( clk ),
@@ -41,7 +43,8 @@ module core import common::*;(
 		.commit_wdest_o ( commit_wdest ),
 		.commit_wdata_o ( commit_wdata ),
 		.commit_skip_o  ( commit_skip ),
-		.gpr_o          ( gpr )
+		.gpr_o          ( gpr ),
+		.csr_state_o    ( csr_state )
 	);
 
 `ifdef VERILATOR
@@ -107,24 +110,29 @@ module core import common::*;(
 		.instrCnt           (0)
 	);
 
+	// sstatus 是 mstatus 的子集视图，物理上不单独保存，按 mask 抽取即可
+	// SSTATUS_MASK = 64'h800000030001e000（与 include/csr.sv 一致）
+	word_t sstatus;
+	assign sstatus = csr_state.mstatus & 64'h800000030001e000;
+
 	DifftestCSRState DifftestCSRState(
 		.clock              (clk),
 		.coreid             (0),
-		.priviledgeMode     (3),
-		.mstatus            (0),
-		.sstatus            (0 /* mstatus & SSTATUS_MASK */),
-		.mepc               (0),
+		.priviledgeMode     (3),                  // 仅 M-mode
+		.mstatus            (csr_state.mstatus),
+		.sstatus            (sstatus),
+		.mepc               (csr_state.mepc),
 		.sepc               (0),
-		.mtval              (0),
+		.mtval              (csr_state.mtval),
 		.stval              (0),
-		.mtvec              (0),
+		.mtvec              (csr_state.mtvec),
 		.stvec              (0),
-		.mcause             (0),
+		.mcause             (csr_state.mcause),
 		.scause             (0),
-		.satp               (0),
-		.mip                (0),
-		.mie                (0),
-		.mscratch           (0),
+		.satp               (csr_state.satp),
+		.mip                (csr_state.mip),
+		.mie                (csr_state.mie),
+		.mscratch           (csr_state.mscratch),
 		.sscratch           (0),
 		.mideleg            (0),
 		.medeleg            (0)

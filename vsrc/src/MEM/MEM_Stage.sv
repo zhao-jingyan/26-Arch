@@ -26,6 +26,7 @@ module MEM_Stage (
     output INST_CTX    inst_ctx_out,
     output MEM_2_WB    mem_2_wb,
     output MEM_2_FWD   mem_2_fwd,
+    output MEM_2_CTRL  mem_2_ctrl,
 
     output logic       is_mem_ready,
 
@@ -82,5 +83,8 @@ module MEM_Stage (
     // MEM → FWD：MEM/WB 寄存器 tap，供 distance-2 RAW forward
     assign mem_2_fwd.rd_addr = inst_ctx_out.rd_addr;
     assign mem_2_fwd.rd_data = mem_2_wb.rd_data;
+
+    // MEM → 控制层：MEM 位指令的 rd（distance-2 写者），供 CSR rs1 hazard 检测
+    assign mem_2_ctrl.rd_addr = inst_ctx_out.rd_addr;
 
 endmodule

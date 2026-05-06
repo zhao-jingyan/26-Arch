@@ -18,23 +18,24 @@ import common::*;
 import top_pkg::*;
 
 module Control_Unit (
-    input  IF_2_CTRL if_2_ctrl,
-    input  ID_2_CTRL id_2_ctrl,
-    input  EX_2_CTRL ex_2_ctrl,
-    input  logic     is_mem_ready,
+    input  IF_2_CTRL  if_2_ctrl,
+    input  ID_2_CTRL  id_2_ctrl,
+    input  EX_2_CTRL  ex_2_ctrl,
+    input  MEM_2_CTRL mem_2_ctrl,
+    input  logic      is_mem_ready,
 
-    input  logic     ex_pc_should_jump,
-    input  u64       ex_pc_jump_address,
+    input  logic      ex_pc_should_jump,
+    input  u64        ex_pc_jump_address,
 
-    output logic     stall_if,
-    output logic     stall_id,
-    output logic     stall_ex,
-    output logic     stall_mem,
-    output logic     insert_bubble,
-    output logic     flush_if_id,
+    output logic      stall_if,
+    output logic      stall_id,
+    output logic      stall_ex,
+    output logic      stall_mem,
+    output logic      insert_bubble,
+    output logic      flush_if_id,
 
-    output logic     pc_should_jump,
-    output u64       pc_jump_address
+    output logic      pc_should_jump,
+    output u64        pc_jump_address
 );
 
     // 全局阻塞：取指未就绪 / 访存未就绪 / ALU 多周期单元（乘除法）忙
@@ -50,18 +51,31 @@ module Control_Unit (
                           && (  (ex_2_ctrl.rd_addr == id_2_ctrl.rs1_addr)
                              || (ex_2_ctrl.rd_addr == id_2_ctrl.rs2_addr));
 
-    // IF / ID 冻结；EX / MEM / WB 正常推进让 load 自己走到 MEM/WB
-    assign stall_if  = pipeline_stall || load_use_hazard;
-    assign stall_id  = pipeline_stall || load_use_hazard;
+    // CSR rs1 hazard（方案 B：CSR 在 ID 一拍读+写，rs1 不能 forward）
+    // ID 位是非 imm 形式 CSR 指令、rs1 != x0、且 EX 或 MEM 槽存在该 rs1 的 in-flight 写者
+    // distance-3（WB 槽）由 RegFile 内部 write-during-read bypass 覆盖，无需 stall
+    logic csr_rs1_hazard;
+    assign csr_rs1_hazard = id_2_ctrl.is_csr
+                         && !id_2_ctrl.is_csr_imm
+                         && (id_2_ctrl.rs1_addr != 5'b0)
+                         && (  (ex_2_ctrl.rd_addr  != 5'b0 && ex_2_ctrl.rd_addr  == id_2_ctrl.rs1_addr)
+                            || (mem_2_ctrl.rd_addr != 5'b0 && mem_2_ctrl.rd_addr == id_2_ctrl.rs1_addr));
+
+    // IF / ID 冻结；EX / MEM / WB 正常推进让 load / 写者自己走到 MEM/WB 出口
+    logic id_hazard;
+    assign id_hazard = load_use_hazard || csr_rs1_hazard;
+
+    assign stall_if  = pipeline_stall || id_hazard;
+    assign stall_id  = pipeline_stall || id_hazard;
     assign stall_ex  = pipeline_stall;
     assign stall_mem = pipeline_stall;
 
-    // ID/EX bubble：load-use 冲突，或 EX 决出跳转需要把 wrong-path 的 ID 指令清掉
+    // ID/EX bubble：ID 段 hazard（load-use / csr-rs1）或 EX 决出跳转
     // pipeline_stall 时所有级已冻结，不应覆盖
-    assign insert_bubble = (load_use_hazard || ex_pc_should_jump) && !pipeline_stall;
+    assign insert_bubble = (id_hazard || ex_pc_should_jump) && !pipeline_stall;
 
     // IF/ID flush：仅在跳转命中时清掉 speculative 取的下一拍指令
-    // load-use 不能 flush（IF/ID 里那条正是要保留、下拍重走的消费者）
+    // load-use / csr-rs1 不能 flush（IF/ID 里那条正是要保留、下拍重走的消费者）
     assign flush_if_id = ex_pc_should_jump && !pipeline_stall;
 
     // EX 当拍的跳转反馈直接转给 IF

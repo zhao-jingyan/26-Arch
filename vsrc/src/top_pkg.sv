@@ -47,6 +47,7 @@ package top_pkg;
     // 注：rs1_data / rs2_data 已剥离到 ID_2_FWD，EX 读 rs 走 fwd_2_ex
     typedef struct packed {
         u64         imm;
+        u64         csr_old;       // CSR 指令的旧值；非 CSR 指令为 0；EX 在 RD_FROM_CSR 时选它
         logic       is_op1_zero;   // LUI 场景
         logic       is_op1_pc;     // AUIPC：ALU op1 = PC
         logic       is_op2_imm;    // OP-IMM / Load / Store / LUI / AUIPC
@@ -95,10 +96,13 @@ package top_pkg;
         u64 rs2_data;
     } FWD_2_EX;
 
-    // ID → 控制层：供 load-use 检测的 ID 位当前指令 rs 号（组合，源自 Decoder）
+    // ID → 控制层：供 load-use 与 CSR rs1 hazard 检测（组合，源自 Decoder）
+    // is_csr：当前 ID 位是否为 CSR 指令；is_csr_imm：CSRRWI/CSRRSI/CSRRCI（rs1 是立即数）
     typedef struct packed {
-        u5 rs1_addr;
-        u5 rs2_addr;
+        u5    rs1_addr;
+        u5    rs2_addr;
+        logic is_csr;
+        logic is_csr_imm;
     } ID_2_CTRL;
 
     // EX → 控制层：供 load-use 检测的 EX 位当前指令信息（组合，源自 ID/EX 寄存器输出）
@@ -108,6 +112,25 @@ package top_pkg;
         u5    rd_addr;      // EX 位指令的 rd
         logic is_alu_busy;  // ALU 多周期单元（乘除法）正在运行
     } EX_2_CTRL;
+
+    // MEM → 控制层：供 CSR rs1 hazard 检测（组合，源自 EX/MEM 寄存器输出）
+    typedef struct packed {
+        u5 rd_addr;         // MEM 位指令的 rd（distance-2 写者）
+    } MEM_2_CTRL;
+
+    // CSRFile 快照：从 ID Stage CSRFile 一路透传到 core.sv 供 Difftest 比对
+    // 仅包含 DifftestCSRState 关心的 9 个 CSR；mcycle / mhartid 不在 Difftest 字段表内
+    typedef struct packed {
+        u64 mstatus;
+        u64 mtvec;
+        u64 mip;
+        u64 mie;
+        u64 mscratch;
+        u64 mcause;
+        u64 mtval;
+        u64 mepc;
+        u64 satp;
+    } CSR_STATE;
 
 endpackage
 

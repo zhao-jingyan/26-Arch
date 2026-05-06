@@ -37,7 +37,8 @@ module Top (
     output u8          commit_wdest_o,
     output u64         commit_wdata_o,
     output logic       commit_skip_o,   // 外设 MMIO 访存跳过 Difftest 对账
-    output u64         gpr_o [0:31]
+    output u64         gpr_o [0:31],
+    output CSR_STATE   csr_state_o      // CSR 快照：DifftestCSRState 字段表内的 9 个 CSR
 );
 
     // ------------------------------------------------------------------------
@@ -56,9 +57,10 @@ module Top (
     EX_2_FWD  ex_2_fwd;
     EX_2_CTRL ex_2_ctrl;
 
-    INST_CTX  mem_inst_ctx;
-    MEM_2_WB  mem_2_wb;
-    MEM_2_FWD mem_2_fwd;
+    INST_CTX   mem_inst_ctx;
+    MEM_2_WB   mem_2_wb;
+    MEM_2_FWD  mem_2_fwd;
+    MEM_2_CTRL mem_2_ctrl;
 
     FWD_2_EX  fwd_2_ex;
 
@@ -88,6 +90,7 @@ module Top (
         .if_2_ctrl          ( if_2_ctrl ),
         .id_2_ctrl          ( id_2_ctrl ),
         .ex_2_ctrl          ( ex_2_ctrl ),
+        .mem_2_ctrl         ( mem_2_ctrl ),
         .is_mem_ready       ( is_mem_ready ),
 
         .ex_pc_should_jump  ( ex_pc_should_jump ),
@@ -133,7 +136,8 @@ module Top (
         .id_2_ex       ( id_2_ex ),
         .id_2_fwd      ( id_2_fwd ),
         .gpr           ( gpr_o ),
-        .id_2_ctrl     ( id_2_ctrl )
+        .id_2_ctrl     ( id_2_ctrl ),
+        .csr_state     ( csr_state_o )
     );
 
     EX_Stage u_ex (
@@ -167,6 +171,7 @@ module Top (
         .inst_ctx_out  ( mem_inst_ctx ),
         .mem_2_wb      ( mem_2_wb ),
         .mem_2_fwd     ( mem_2_fwd ),
+        .mem_2_ctrl    ( mem_2_ctrl ),
 
         .is_mem_ready  ( is_mem_ready ),
 

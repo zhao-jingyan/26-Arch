@@ -90,6 +90,8 @@ module MEM_Stage (
     assign mem_2_fwd.rd_data = mem_2_wb.rd_data;
 
     // MEM → 控制层：MEM 位指令的 rd（distance-2 写者），供 CSR rs1 hazard 检测
-    assign mem_2_ctrl.rd_addr = inst_ctx_out.rd_addr;
+    // 用 inst_ctx_in（EX/MEM 寄存器输出 = MEM 段当拍处理的指令）；
+    // inst_ctx_out 是 MEM/WB 寄存器输出 = WB 段指令（distance-3），由 RegFile 内部 bypass 解决，无需 stall
+    assign mem_2_ctrl.rd_addr = inst_ctx_in.rd_addr;
 
 endmodule

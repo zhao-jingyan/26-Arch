@@ -100,11 +100,13 @@ module EX_Stage (
     end
 
     // 跳转判定组合直出
+    // JT_CSR 走"永远预测失败"语义，无条件拉高让 Control_Unit 触发 flush + PC 重定向到 pc+4
     always_comb begin
         unique case (id_2_ex.jump_type)
             JT_JAL:  pc_should_jump = 1'b1;
             JT_JALR: pc_should_jump = 1'b1;
             JT_BR:   pc_should_jump = is_branch_taken;
+            JT_CSR:  pc_should_jump = 1'b1;
             default: pc_should_jump = 1'b0;
         endcase
     end

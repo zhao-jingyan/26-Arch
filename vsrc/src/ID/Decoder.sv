@@ -203,14 +203,16 @@ module Decoder (
             OP_SYSTEM: begin
                 // Zicsr：CSRRW/RS/RC/RWI/RSI/RCI；rd 写回 = CSR 旧值
                 // 其它 SYSTEM 指令（ECALL/EBREAK/MRET 等）暂不实现，走 default
+                // 把 CSR 指令统一标记为 JT_CSR（永远预测失败的 pc+4 跳转），
+                // 借 EX 段 jump flush 路径在写 CSR 后强制刷新流水线，避免后续指令读到旧 CSR 状态
                 rd_src = RD_FROM_CSR;
                 unique case (funct3)
-                    FUNCT3_CSRRW:  begin is_csr = 1'b1; csr_op = CSR_RW;  end
-                    FUNCT3_CSRRS:  begin is_csr = 1'b1; csr_op = CSR_RS;  end
-                    FUNCT3_CSRRC:  begin is_csr = 1'b1; csr_op = CSR_RC;  end
-                    FUNCT3_CSRRWI: begin is_csr = 1'b1; csr_op = CSR_RWI; is_csr_imm = 1'b1; end
-                    FUNCT3_CSRRSI: begin is_csr = 1'b1; csr_op = CSR_RSI; is_csr_imm = 1'b1; end
-                    FUNCT3_CSRRCI: begin is_csr = 1'b1; csr_op = CSR_RCI; is_csr_imm = 1'b1; end
+                    FUNCT3_CSRRW:  begin is_csr = 1'b1; csr_op = CSR_RW;  jump_type = JT_CSR; end
+                    FUNCT3_CSRRS:  begin is_csr = 1'b1; csr_op = CSR_RS;  jump_type = JT_CSR; end
+                    FUNCT3_CSRRC:  begin is_csr = 1'b1; csr_op = CSR_RC;  jump_type = JT_CSR; end
+                    FUNCT3_CSRRWI: begin is_csr = 1'b1; csr_op = CSR_RWI; is_csr_imm = 1'b1; jump_type = JT_CSR; end
+                    FUNCT3_CSRRSI: begin is_csr = 1'b1; csr_op = CSR_RSI; is_csr_imm = 1'b1; jump_type = JT_CSR; end
+                    FUNCT3_CSRRCI: begin is_csr = 1'b1; csr_op = CSR_RCI; is_csr_imm = 1'b1; jump_type = JT_CSR; end
                     default: begin
                         // 非 Zicsr 的 SYSTEM 指令：当前不识别，回退为 NOP
                         rd_src = RD_FROM_ALU;

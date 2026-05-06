@@ -55,11 +55,14 @@ package EX_PKG;
     } RD_SRC;
 
     // 跳转类型
-    typedef enum logic [1:0] {
-        JT_NONE = 2'd0,  // 顺序
-        JT_BR   = 2'd1,  // 条件跳；target = PC + imm
-        JT_JAL  = 2'd2,  // 无条件跳；target = PC + imm
-        JT_JALR = 2'd3   // 无条件跳；target = (rs1 + imm) & ~1
+    // JT_CSR：CSR 指令"永远预测失败的 PC+4 跳转"，用于复用 jump flush 路径强制刷新流水线
+    //         保证 CSR 写后续指令重新 fetch，从而不会读到旧 CSR 状态
+    typedef enum logic [2:0] {
+        JT_NONE = 3'd0,  // 顺序
+        JT_BR   = 3'd1,  // 条件跳；target = PC + imm
+        JT_JAL  = 3'd2,  // 无条件跳；target = PC + imm
+        JT_JALR = 3'd3,  // 无条件跳；target = (rs1 + imm) & ~1
+        JT_CSR  = 3'd4   // CSR 强制刷新；target = PC + 4
     } JUMP_TYPE;
 endpackage
 

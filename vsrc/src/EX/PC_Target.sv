@@ -29,6 +29,7 @@ module PC_Target (
             JT_JALR: jump_target = (rs1_data + imm) & ~64'd1;
             JT_JAL:  jump_target = pc_inst_address + imm;
             JT_BR:   jump_target = pc_inst_address + imm;
+            JT_CSR:  jump_target = pc_plus_4;          // CSR 写后强制刷新，重 fetch pc+4
             default: jump_target = 64'b0;  // JT_NONE 时外部不消费
         endcase
     end

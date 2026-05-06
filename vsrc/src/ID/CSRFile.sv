@@ -1,7 +1,8 @@
 // ----------------------------------------------------------------------------
 // File        : CSRFile.sv
-// Description : 11 个 M/S 模式 CSR 寄存器组，方案 B（ID 读 + ID 写）
-//               读端口纯组合：当拍 csr_addr 命中即输出对应寄存器的当前值
+// Description : 11 个 M/S 模式 CSR 寄存器组，方案 A（ID 段读 + WB 段写，与 commit 同拍）
+//               读端口组合：当拍 csr_addr 命中即输出对应寄存器值；
+//                 含 read-during-write bypass，覆盖 distance-1 RAW
 //               写端口同步：write_en 在下沿把 write_data 经 WARL mask 写入
 //               mhartid 硬连 0；mcycle 每周期自增（软件写覆盖优先）
 //               非法地址：读返回 0，写忽略
@@ -46,26 +47,6 @@ module CSRFile (
     u64 satp;
 
     // ------------------------------------------------------------------------
-    // 组合读：地址未命中返回 0
-    // ------------------------------------------------------------------------
-    always_comb begin
-        unique case (read_addr)
-            CSR_MSTATUS:  read_data = mstatus;
-            CSR_MTVEC:    read_data = mtvec;
-            CSR_MIP:      read_data = mip;
-            CSR_MIE:      read_data = mie;
-            CSR_MSCRATCH: read_data = mscratch;
-            CSR_MCAUSE:   read_data = mcause;
-            CSR_MTVAL:    read_data = mtval;
-            CSR_MEPC:     read_data = mepc;
-            CSR_MCYCLE:   read_data = mcycle;
-            CSR_MHARTID:  read_data = 64'b0;
-            CSR_SATP:     read_data = satp;
-            default:      read_data = 64'b0;
-        endcase
-    end
-
-    // ------------------------------------------------------------------------
     // WARL mask：mstatus / mtvec / mip 应用对应 mask；其余直写
     // ------------------------------------------------------------------------
     function automatic u64 apply_mask(input u12 addr, input u64 data, input u64 prev);
@@ -76,6 +57,40 @@ module CSRFile (
             default:     apply_mask = data;
         endcase
     endfunction
+
+    // ------------------------------------------------------------------------
+    // 当拍寄存器输出值（无 bypass）；用于 read-during-write bypass 与 csr_state 快照
+    // ------------------------------------------------------------------------
+    u64 reg_value;
+    always_comb begin
+        unique case (read_addr)
+            CSR_MSTATUS:  reg_value = mstatus;
+            CSR_MTVEC:    reg_value = mtvec;
+            CSR_MIP:      reg_value = mip;
+            CSR_MIE:      reg_value = mie;
+            CSR_MSCRATCH: reg_value = mscratch;
+            CSR_MCAUSE:   reg_value = mcause;
+            CSR_MTVAL:    reg_value = mtval;
+            CSR_MEPC:     reg_value = mepc;
+            CSR_MCYCLE:   reg_value = mcycle;
+            CSR_MHARTID:  reg_value = 64'b0;
+            CSR_SATP:     reg_value = satp;
+            default:      reg_value = 64'b0;
+        endcase
+    end
+
+    // ------------------------------------------------------------------------
+    // 组合读 + read-during-write bypass：
+    //   WB 段当拍命中正在写的同地址时直出 mask 后的写值，覆盖 distance-1 RAW；
+    //   非法地址或 mhartid 忽略 bypass（read 端默认 0 / 硬 0），由下方 hit 判定屏蔽
+    // ------------------------------------------------------------------------
+    logic bypass_hit;
+    assign bypass_hit = write_en
+                     && (read_addr == write_addr)
+                     && (read_addr != CSR_MHARTID);
+
+    assign read_data = bypass_hit ? apply_mask(write_addr, write_data, reg_value)
+                                  : reg_value;
 
     // ------------------------------------------------------------------------
     // 同步写：复位 + 软件写 + mcycle 自增

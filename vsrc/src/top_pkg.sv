@@ -132,6 +132,15 @@ package top_pkg;
         u64 satp;
     } CSR_STATE;
 
+    // CSR 写请求（贯穿型 bundle）：ID 段算好后随流水线透传到 WB 段，
+    // WB 段再回送给 ID 内的 CSRFile 写口；这样 CSR 写时机与 commit 同拍，
+    // 满足 Difftest 按 program order 的 CSR 一致性要求
+    typedef struct packed {
+        logic write_en;
+        u12   write_addr;
+        u64   write_data;
+    } CSR_WRITE;
+
 endpackage
 
 `endif

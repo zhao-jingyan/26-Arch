@@ -65,6 +65,12 @@ module Top (
     FWD_2_EX  fwd_2_ex;
 
     WB_2_ID   wb_2_id;
+    CSR_WRITE wb_2_csr;
+
+    // CSR 写请求贯穿链：ID 段算好 → EX/MEM 透传 → WB 段反向送给 ID 内 CSRFile
+    CSR_WRITE id_csr_write;
+    CSR_WRITE ex_csr_write;
+    CSR_WRITE mem_csr_write;
 
     // EX / MEM 对控制层的裸端口反馈
     logic ex_pc_should_jump;
@@ -131,10 +137,12 @@ module Top (
         .insert_bubble ( insert_bubble ),
         .if_2_id       ( if_2_id ),
         .wb_2_id       ( wb_2_id ),
+        .wb_2_csr      ( wb_2_csr ),
 
         .inst_ctx      ( id_inst_ctx ),
         .id_2_ex       ( id_2_ex ),
         .id_2_fwd      ( id_2_fwd ),
+        .csr_write     ( id_csr_write ),
         .gpr           ( gpr_o ),
         .id_2_ctrl     ( id_2_ctrl ),
         .csr_state     ( csr_state_o )
@@ -149,11 +157,13 @@ module Top (
         .inst_ctx_in     ( id_inst_ctx ),
         .id_2_ex         ( id_2_ex ),
         .fwd_2_ex        ( fwd_2_ex ),
+        .csr_write_in    ( id_csr_write ),
 
         .inst_ctx_out    ( ex_inst_ctx ),
         .ex_2_mem        ( ex_2_mem ),
         .ex_2_fwd        ( ex_2_fwd ),
         .ex_2_ctrl       ( ex_2_ctrl ),
+        .csr_write_out   ( ex_csr_write ),
 
         .pc_should_jump  ( ex_pc_should_jump ),
         .pc_jump_address ( ex_pc_jump_address )
@@ -167,11 +177,13 @@ module Top (
 
         .inst_ctx_in   ( ex_inst_ctx ),
         .ex_2_mem      ( ex_2_mem ),
+        .csr_write_in  ( ex_csr_write ),
 
         .inst_ctx_out  ( mem_inst_ctx ),
         .mem_2_wb      ( mem_2_wb ),
         .mem_2_fwd     ( mem_2_fwd ),
         .mem_2_ctrl    ( mem_2_ctrl ),
+        .csr_write_out ( mem_csr_write ),
 
         .is_mem_ready  ( is_mem_ready ),
 
@@ -180,10 +192,12 @@ module Top (
     );
 
     WB_Stage u_wb (
-        .inst_ctx ( mem_inst_ctx ),
-        .mem_2_wb ( mem_2_wb ),
+        .inst_ctx  ( mem_inst_ctx ),
+        .mem_2_wb  ( mem_2_wb ),
+        .csr_write ( mem_csr_write ),
 
-        .wb_2_id  ( wb_2_id )
+        .wb_2_id   ( wb_2_id ),
+        .wb_2_csr  ( wb_2_csr )
     );
 
     // ------------------------------------------------------------------------

@@ -22,11 +22,13 @@ module MEM_Stage (
 
     input  INST_CTX    inst_ctx_in,
     input  EX_2_MEM    ex_2_mem,
+    input  CSR_WRITE   csr_write_in,
 
     output INST_CTX    inst_ctx_out,
     output MEM_2_WB    mem_2_wb,
     output MEM_2_FWD   mem_2_fwd,
     output MEM_2_CTRL  mem_2_ctrl,
+    output CSR_WRITE   csr_write_out,
 
     output logic       is_mem_ready,
 
@@ -68,15 +70,18 @@ module MEM_Stage (
     assign rd_data = is_load ? load_data : ex_2_mem.ex_result;
 
     // MEM/WB 流水寄存器：!stall && is_mem_ready 时前进；复位清零
+    // csr_write 与 inst_ctx 同 latch 节奏，原样透传到 WB 段
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            inst_ctx_out <= '0;
-            mem_2_wb     <= '0;
+            inst_ctx_out  <= '0;
+            mem_2_wb      <= '0;
+            csr_write_out <= '0;
         end
         else if (!stall && is_mem_ready) begin
             inst_ctx_out      <= inst_ctx_in;
             mem_2_wb.rd_data  <= rd_data;
             mem_2_wb.mem_addr <= ex_2_mem.ex_result;  // 供 commit 层做 Difftest skip 判定
+            csr_write_out     <= csr_write_in;
         end
     end
 

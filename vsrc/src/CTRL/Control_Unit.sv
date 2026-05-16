@@ -80,13 +80,14 @@ module Control_Unit (
     assign stall_ex  = req_global_stall;
     assign stall_mem = req_global_stall;
 
-    // ID/EX bubble：重定向类事件优先于 stall；数据冒险只在流水线可推进时插泡
-    assign insert_bubble = req_branch_flush || req_trap_flush
-                         || (req_data_stall && !req_global_stall);
+    // ID/EX bubble：trap/mret 已在 WB 提交，可优先清 younger 指令；
+    // EX 段 branch/jal 只有在流水线可推进时才能清 ID/EX，避免把跳转指令自身冲掉
+    assign insert_bubble = req_trap_flush
+                         || ((req_data_stall || req_branch_flush) && !req_global_stall);
 
     // IF/ID flush：仅在跳转命中时清掉 speculative 取的下一拍指令
     // load-use / csr-rs1 不能 flush（IF/ID 里那条正是要保留、下拍重走的消费者）
-    assign flush_if_id = req_branch_flush || req_trap_flush;
+    assign flush_if_id = req_trap_flush || (req_branch_flush && !req_global_stall);
 
     assign flush_ex  = req_trap_flush;
     assign flush_mem = req_trap_flush;
@@ -102,7 +103,7 @@ module Control_Unit (
             pc_jump_address = priv_2_ctrl.mepc_value;
         end
         else begin
-            pc_should_jump  = req_branch_flush;
+            pc_should_jump  = req_branch_flush && !req_global_stall;
             pc_jump_address = ex_pc_jump_address;
         end
     end

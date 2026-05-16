@@ -42,6 +42,10 @@ module MMU (
     logic is_sv39_mode;
     logic should_translate;
 
+    function automatic logic is_leaf_pte(input u64 pte_data);
+        is_leaf_pte = pte_data[0] && (pte_data[1] || pte_data[3]);
+    endfunction
+
     // 仅 S/U 模式且 satp.MODE=Sv39 时启用地址翻译
     assign is_virtual_priv  = (priv_mode == PRIV_S) || (priv_mode == PRIV_U);
     assign is_sv39_mode     = satp[63:60] == 4'd8;
@@ -123,7 +127,7 @@ module MMU (
                 WALK_L2: begin
                     if (downstream_response.data_ok) begin
                         pte   <= downstream_response.data;
-                        if (downstream_response.data[1] || downstream_response.data[3]) begin
+                        if (is_leaf_pte(downstream_response.data)) begin
                             leaf_level <= 2'd2;
                             state      <= ACCESS;
                         end
@@ -135,7 +139,7 @@ module MMU (
                 WALK_L1: begin
                     if (downstream_response.data_ok) begin
                         pte   <= downstream_response.data;
-                        if (downstream_response.data[1] || downstream_response.data[3]) begin
+                        if (is_leaf_pte(downstream_response.data)) begin
                             leaf_level <= 2'd1;
                             state      <= ACCESS;
                         end

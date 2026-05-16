@@ -4,9 +4,7 @@
 `ifdef VERILATOR
 `include "include/common.sv"
 `include "src/core.sv"
-`include "util/IBusToCBus.sv"
 `include "util/DBusToCBus.sv"
-`include "util/CBusArbiter.sv"
 
 `endif
 module VTop 
@@ -18,24 +16,17 @@ module VTop
 	input logic trint, swint, exint
 );
 
-    ibus_req_t  ireq;
-    ibus_resp_t iresp;
     dbus_req_t  dreq;
     dbus_resp_t dresp;
-    cbus_req_t  icreq,  dcreq;
-    cbus_resp_t icresp, dcresp;
+    cbus_req_t  dcreq;
+    cbus_resp_t dcresp;
 
     core core(.*);
-    IBusToCBus icvt(.*);
 
     DBusToCBus dcvt(.*);
 
-
-    CBusArbiter mux(
-        .ireqs({icreq, dcreq}),
-        .iresps({icresp, dcresp}),
-        .*
-    );
+    assign oreq   = dcreq;
+    assign dcresp = oresp;
 
 	always_ff @(posedge clk) begin
 		if (~reset) begin

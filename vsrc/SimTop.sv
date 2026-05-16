@@ -1,9 +1,7 @@
 `ifdef VERILATOR
 `include "include/common.sv"
 `include "src/core.sv"
-`include "util/IBusToCBus.sv"
 `include "util/DBusToCBus.sv"
-`include "util/CBusArbiter.sv"
 
 module SimTop import common::*;(
   input         clock,
@@ -23,25 +21,18 @@ module SimTop import common::*;(
     cbus_resp_t oresp;
     logic trint, swint, exint;
 
-    ibus_req_t  ireq;
-    ibus_resp_t iresp;
     dbus_req_t  dreq;
     dbus_resp_t dresp;
-    cbus_req_t  icreq,  dcreq;
-    cbus_resp_t icresp, dcresp;
+    cbus_req_t  dcreq;
+    cbus_resp_t dcresp;
 
     core core(
-      .clk(clock), .reset, .ireq, .iresp, .dreq, .dresp, .trint, .swint, .exint
+      .clk(clock), .reset, .dreq, .dresp, .trint, .swint, .exint
     );
 
-    IBusToCBus icvt(.*);
     DBusToCBus dcvt(.*);
-    CBusArbiter mux(
-        .clk(clock), .reset,
-        .ireqs({icreq, dcreq}),
-        .iresps({icresp, dcresp}),
-        .*
-    );
+    assign oreq   = dcreq;
+    assign dcresp = oresp;
 
     RAMHelper2 ram(
         .clk(clock), .reset, .oreq, .oresp, .trint, .swint, .exint

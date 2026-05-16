@@ -1,7 +1,7 @@
 // ----------------------------------------------------------------------------
 // File        : Top.sv
 // Description : v2 五段流水线顶层：IF → ID → EX → MEM → WB + Control_Unit
-//               对外接口保持与 v1 Top 一致（ibus/dbus/commit/gpr），供 core.sv 使用
+//               对外暴露单条 dbus，IF/MEM 经 DBus_Arbiter + MMU 访存
 //               commit 信号按 v1 做法：MEM/WB 寄存器 + 1-cycle prev 比较，检测"推进"沿
 // ----------------------------------------------------------------------------
 
@@ -16,6 +16,8 @@
 `include "src/CTRL/Control_Unit.sv"
 `include "src/CTRL/Forward_Unit.sv"
 `include "src/CTRL/Privilege_Unit.sv"
+`include "src/MMU/DBus_Arbiter.sv"
+`include "src/MMU/MMU.sv"
 `endif
 
 import common::*;
@@ -26,8 +28,6 @@ module Top (
     input  logic       clk,
     input  logic       rst_n,
 
-    output ibus_req_t  ibus_req_o,
-    input  ibus_resp_t ibus_resp_i,
     output dbus_req_t  dbus_req_o,
     input  dbus_resp_t dbus_resp_i,
 
@@ -92,6 +92,13 @@ module Top (
     logic ex_pc_should_jump;
     u64   ex_pc_jump_address;
     logic is_mem_ready;
+
+    dbus_req_t  fetch_dbus_req;
+    dbus_resp_t fetch_dbus_resp;
+    dbus_req_t  mem_dbus_req;
+    dbus_resp_t mem_dbus_resp;
+    dbus_req_t  merged_dbus_req;
+    dbus_resp_t merged_dbus_resp;
 
     // 控制层输出
     logic stall_if, stall_id, stall_ex, stall_mem;
@@ -168,8 +175,8 @@ module Top (
         .if_2_id         ( if_2_id ),
         .if_2_ctrl       ( if_2_ctrl ),
 
-        .ibus_request    ( ibus_req_o ),
-        .ibus_response   ( ibus_resp_i )
+        .dbus_request    ( fetch_dbus_req ),
+        .dbus_response   ( fetch_dbus_resp )
     );
 
     ID_Stage u_id (
@@ -244,8 +251,34 @@ module Top (
 
         .is_mem_ready  ( is_mem_ready ),
 
-        .dbus_request  ( dbus_req_o ),
-        .dbus_response ( dbus_resp_i )
+        .dbus_request  ( mem_dbus_req ),
+        .dbus_response ( mem_dbus_resp )
+    );
+
+    DBus_Arbiter u_dbus_arbiter (
+        .clk            ( clk ),
+        .rst_n          ( rst_n ),
+
+        .mem_request    ( mem_dbus_req ),
+        .mem_response   ( mem_dbus_resp ),
+        .fetch_request  ( fetch_dbus_req ),
+        .fetch_response ( fetch_dbus_resp ),
+
+        .dbus_request   ( merged_dbus_req ),
+        .dbus_response  ( merged_dbus_resp )
+    );
+
+    MMU u_mmu (
+        .clk                 ( clk ),
+        .rst_n               ( rst_n ),
+
+        .upstream_request    ( merged_dbus_req ),
+        .upstream_response   ( merged_dbus_resp ),
+        .downstream_request  ( dbus_req_o ),
+        .downstream_response ( dbus_resp_i ),
+
+        .satp                ( csr_state_o.satp ),
+        .priv_mode           ( priv_mode_o )
     );
 
     WB_Stage u_wb (

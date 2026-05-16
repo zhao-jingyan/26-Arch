@@ -24,8 +24,8 @@ module IF_Stage (
     output IF_2_ID     if_2_id,
     output IF_2_CTRL   if_2_ctrl,
 
-    output ibus_req_t  ibus_request,
-    input  ibus_resp_t ibus_response
+    output dbus_req_t  dbus_request,
+    input  dbus_resp_t dbus_response
 );
 
     u64   pc_inst_address_cur;
@@ -57,8 +57,8 @@ module IF_Stage (
         .inst             ( inst_fetched ),
         .is_inst_ready    ( is_inst_ready ),
 
-        .ibus_request     ( ibus_request ),
-        .ibus_response    ( ibus_response )
+        .dbus_request     ( dbus_request ),
+        .dbus_response    ( dbus_response )
     );
 
     // IF/ID 流水线寄存器：复位 / flush 清零；否则 is_inst_ready && !stall 时前进

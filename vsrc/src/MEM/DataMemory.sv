@@ -3,6 +3,9 @@
 // Description : dbus 握手适配器；组合传递请求与响应
 // ----------------------------------------------------------------------------
 
+`ifndef DATA_MEMORY_SV
+`define DATA_MEMORY_SV
+
 import common::*;
 
 module DataMemory (
@@ -32,3 +35,5 @@ module DataMemory (
     assign is_response_valid   = dbus_response.data_ok;
 
 endmodule
+
+`endif

@@ -99,6 +99,7 @@ module Top (
     dbus_resp_t mem_dbus_resp;
     dbus_req_t  merged_dbus_req;
     dbus_resp_t merged_dbus_resp;
+    PRIV_MODE   mmu_priv_mode;
 
     // 控制层输出
     logic stall_if, stall_id, stall_ex, stall_mem;
@@ -162,6 +163,15 @@ module Top (
         .priv_2_ctrl         ( priv_2_ctrl ),
         .priv_mode           ( priv_mode_o )
     );
+
+    always_comb begin
+        if (priv_2_ctrl.is_trap_fire)
+            mmu_priv_mode = PRIV_M;
+        else if (priv_2_ctrl.is_mret_fire)
+            mmu_priv_mode = PRIV_MODE'(csr_state_o.mstatus[12:11]);
+        else
+            mmu_priv_mode = priv_mode_o;
+    end
 
     IF_Stage u_if (
         .clk             ( clk ),
@@ -278,7 +288,7 @@ module Top (
         .downstream_response ( dbus_resp_i ),
 
         .satp                ( csr_state_o.satp ),
-        .priv_mode           ( priv_mode_o )
+        .priv_mode           ( mmu_priv_mode )
     );
 
     WB_Stage u_wb (

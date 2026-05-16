@@ -80,16 +80,16 @@ module Control_Unit (
     assign stall_ex  = req_global_stall;
     assign stall_mem = req_global_stall;
 
-    // ID/EX bubble：ID 段 hazard（load-use / csr-rs1）或 EX 决出跳转
-    // pipeline_stall 时所有级已冻结，不应覆盖
-    assign insert_bubble = (req_data_stall || req_branch_flush || req_trap_flush) && !req_global_stall;
+    // ID/EX bubble：重定向类事件优先于 stall；数据冒险只在流水线可推进时插泡
+    assign insert_bubble = req_branch_flush || req_trap_flush
+                         || (req_data_stall && !req_global_stall);
 
     // IF/ID flush：仅在跳转命中时清掉 speculative 取的下一拍指令
     // load-use / csr-rs1 不能 flush（IF/ID 里那条正是要保留、下拍重走的消费者）
-    assign flush_if_id = (req_branch_flush || req_trap_flush) && !req_global_stall;
+    assign flush_if_id = req_branch_flush || req_trap_flush;
 
-    assign flush_ex  = req_trap_flush && !req_global_stall;
-    assign flush_mem = req_trap_flush && !req_global_stall;
+    assign flush_ex  = req_trap_flush;
+    assign flush_mem = req_trap_flush;
 
     // PC mux 优先级：trap > mret > branch > 顺序
     always_comb begin

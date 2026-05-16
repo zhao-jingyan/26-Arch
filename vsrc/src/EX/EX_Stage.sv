@@ -22,13 +22,16 @@ module EX_Stage (
     input  logic     rst_n,
 
     input  logic     stall,
+    input  logic     flush,
 
     input  INST_CTX  inst_ctx_in,
+    input  TRAP_CTX  trap_ctx_in,
     input  ID_2_EX   id_2_ex,
     input  FWD_2_EX  fwd_2_ex,
     input  CSR_WRITE csr_write_in,
 
     output INST_CTX  inst_ctx_out,
+    output TRAP_CTX  trap_ctx_out,
     output EX_2_MEM  ex_2_mem,
     output EX_2_FWD  ex_2_fwd,
     output EX_2_CTRL ex_2_ctrl,
@@ -119,10 +122,17 @@ module EX_Stage (
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             inst_ctx_out  <= '0;
+            trap_ctx_out  <= '0;
+            ex_2_mem      <= '0;
+            csr_write_out <= '0;
+        end else if (flush) begin
+            inst_ctx_out  <= '0;
+            trap_ctx_out  <= '0;
             ex_2_mem      <= '0;
             csr_write_out <= '0;
         end else if (!stall) begin
             inst_ctx_out        <= inst_ctx_in;
+            trap_ctx_out        <= trap_ctx_in;
             ex_2_mem.ex_result  <= ex_result;
             ex_2_mem.rs2_data   <= fwd_2_ex.rs2_data;
             csr_write_out       <= csr_write_in;

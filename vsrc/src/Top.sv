@@ -15,6 +15,7 @@
 `include "src/WB/WB_Stage.sv"
 `include "src/CTRL/Control_Unit.sv"
 `include "src/CTRL/Forward_Unit.sv"
+`include "src/CTRL/Privilege_Unit.sv"
 `endif
 
 import common::*;
@@ -38,7 +39,8 @@ module Top (
     output u64         commit_wdata_o,
     output logic       commit_skip_o,   // 外设 MMIO 访存跳过 Difftest 对账
     output u64         gpr_o [0:31],
-    output CSR_STATE   csr_state_o      // CSR 快照：DifftestCSRState 字段表内的 9 个 CSR
+    output CSR_STATE   csr_state_o,     // CSR 快照：DifftestCSRState 字段表内的 9 个 CSR
+    output PRIV_MODE   priv_mode_o
 );
 
     // ------------------------------------------------------------------------
@@ -48,16 +50,19 @@ module Top (
     IF_2_CTRL if_2_ctrl;
 
     INST_CTX  id_inst_ctx;
+    TRAP_CTX  id_trap_ctx;
     ID_2_EX   id_2_ex;
     ID_2_FWD  id_2_fwd;
     ID_2_CTRL id_2_ctrl;
 
     INST_CTX  ex_inst_ctx;
+    TRAP_CTX  ex_trap_ctx;
     EX_2_MEM  ex_2_mem;
     EX_2_FWD  ex_2_fwd;
     EX_2_CTRL ex_2_ctrl;
 
     INST_CTX   mem_inst_ctx;
+    TRAP_CTX   mem_trap_ctx;
     MEM_2_WB   mem_2_wb;
     MEM_2_FWD  mem_2_fwd;
     MEM_2_CTRL mem_2_ctrl;
@@ -66,11 +71,22 @@ module Top (
 
     WB_2_ID   wb_2_id;
     CSR_WRITE wb_2_csr;
+    WB_TRAP_EVENT wb_trap_event;
 
     // CSR 写请求贯穿链：ID 段算好 → EX/MEM 透传 → WB 段反向送给 ID 内 CSRFile
     CSR_WRITE id_csr_write;
     CSR_WRITE ex_csr_write;
     CSR_WRITE mem_csr_write;
+
+    // trap / privilege 协调
+    PRIV_2_CTRL priv_2_ctrl;
+    logic       trap_write_en;
+    u64         trap_mstatus_next;
+    u64         trap_mepc_next;
+    u64         trap_mcause_next;
+    u64         trap_mtval_next;
+    u64         mtvec_value;
+    u64         mepc_value;
 
     // EX / MEM 对控制层的裸端口反馈
     logic ex_pc_should_jump;
@@ -81,8 +97,10 @@ module Top (
     logic stall_if, stall_id, stall_ex, stall_mem;
     logic insert_bubble;
     logic flush_if_id;
+    logic flush_ex, flush_mem;
     logic pc_should_jump;
     u64   pc_jump_address;
+    logic wb_commit_valid;
 
     Forward_Unit u_fwd (
         .id_2_fwd  ( id_2_fwd ),
@@ -101,6 +119,7 @@ module Top (
 
         .ex_pc_should_jump  ( ex_pc_should_jump ),
         .ex_pc_jump_address ( ex_pc_jump_address ),
+        .priv_2_ctrl        ( priv_2_ctrl ),
 
         .stall_if           ( stall_if ),
         .stall_id           ( stall_id ),
@@ -108,9 +127,33 @@ module Top (
         .stall_mem          ( stall_mem ),
         .insert_bubble      ( insert_bubble ),
         .flush_if_id        ( flush_if_id ),
+        .flush_ex           ( flush_ex ),
+        .flush_mem          ( flush_mem ),
 
         .pc_should_jump     ( pc_should_jump ),
         .pc_jump_address    ( pc_jump_address )
+    );
+
+    Privilege_Unit u_priv (
+        .clk                 ( clk ),
+        .rst_n               ( rst_n ),
+
+        .wb_trap_event       ( wb_trap_event ),
+        .mstatus             ( csr_state_o.mstatus ),
+        .mcause              ( csr_state_o.mcause ),
+        .mtval               ( csr_state_o.mtval ),
+        .mtvec_value         ( mtvec_value ),
+        .mepc_value          ( mepc_value ),
+        .interrupt_pending   ( 1'b0 ),
+
+        .trap_write_en       ( trap_write_en ),
+        .trap_mstatus_next   ( trap_mstatus_next ),
+        .trap_mepc_next      ( trap_mepc_next ),
+        .trap_mcause_next    ( trap_mcause_next ),
+        .trap_mtval_next     ( trap_mtval_next ),
+
+        .priv_2_ctrl         ( priv_2_ctrl ),
+        .priv_mode           ( priv_mode_o )
     );
 
     IF_Stage u_if (
@@ -138,14 +181,22 @@ module Top (
         .if_2_id       ( if_2_id ),
         .wb_2_id       ( wb_2_id ),
         .wb_2_csr      ( wb_2_csr ),
+        .trap_write_en     ( trap_write_en ),
+        .trap_mstatus_next ( trap_mstatus_next ),
+        .trap_mepc_next    ( trap_mepc_next ),
+        .trap_mcause_next  ( trap_mcause_next ),
+        .trap_mtval_next   ( trap_mtval_next ),
 
         .inst_ctx      ( id_inst_ctx ),
+        .trap_ctx      ( id_trap_ctx ),
         .id_2_ex       ( id_2_ex ),
         .id_2_fwd      ( id_2_fwd ),
         .csr_write     ( id_csr_write ),
         .gpr           ( gpr_o ),
         .id_2_ctrl     ( id_2_ctrl ),
-        .csr_state     ( csr_state_o )
+        .csr_state     ( csr_state_o ),
+        .mtvec_value   ( mtvec_value ),
+        .mepc_value    ( mepc_value )
     );
 
     EX_Stage u_ex (
@@ -153,13 +204,16 @@ module Top (
         .rst_n           ( rst_n ),
 
         .stall           ( stall_ex ),
+        .flush           ( flush_ex ),
 
         .inst_ctx_in     ( id_inst_ctx ),
+        .trap_ctx_in     ( id_trap_ctx ),
         .id_2_ex         ( id_2_ex ),
         .fwd_2_ex        ( fwd_2_ex ),
         .csr_write_in    ( id_csr_write ),
 
         .inst_ctx_out    ( ex_inst_ctx ),
+        .trap_ctx_out    ( ex_trap_ctx ),
         .ex_2_mem        ( ex_2_mem ),
         .ex_2_fwd        ( ex_2_fwd ),
         .ex_2_ctrl       ( ex_2_ctrl ),
@@ -174,12 +228,15 @@ module Top (
         .rst_n         ( rst_n ),
 
         .stall         ( stall_mem ),
+        .flush         ( flush_mem ),
 
         .inst_ctx_in   ( ex_inst_ctx ),
+        .trap_ctx_in   ( ex_trap_ctx ),
         .ex_2_mem      ( ex_2_mem ),
         .csr_write_in  ( ex_csr_write ),
 
         .inst_ctx_out  ( mem_inst_ctx ),
+        .trap_ctx_out  ( mem_trap_ctx ),
         .mem_2_wb      ( mem_2_wb ),
         .mem_2_fwd     ( mem_2_fwd ),
         .mem_2_ctrl    ( mem_2_ctrl ),
@@ -192,12 +249,15 @@ module Top (
     );
 
     WB_Stage u_wb (
-        .inst_ctx  ( mem_inst_ctx ),
-        .mem_2_wb  ( mem_2_wb ),
-        .csr_write ( mem_csr_write ),
+        .inst_ctx        ( mem_inst_ctx ),
+        .trap_ctx        ( mem_trap_ctx ),
+        .mem_2_wb        ( mem_2_wb ),
+        .csr_write       ( mem_csr_write ),
+        .commit_valid    ( wb_commit_valid ),
 
-        .wb_2_id   ( wb_2_id ),
-        .wb_2_csr  ( wb_2_csr )
+        .wb_2_id         ( wb_2_id ),
+        .wb_2_csr        ( wb_2_csr ),
+        .wb_trap_event   ( wb_trap_event )
     );
 
     // ------------------------------------------------------------------------
@@ -219,9 +279,12 @@ module Top (
         end
     end
 
-    assign commit_valid_o = (prev_inst_ctx.inst != 32'b0)
-                          && ((mem_inst_ctx.pc_inst_address != prev_inst_ctx.pc_inst_address)
-                              || (mem_inst_ctx.inst            != prev_inst_ctx.inst));
+    assign wb_commit_valid = (mem_inst_ctx.inst != 32'b0)
+                           && ((mem_inst_ctx.pc_inst_address != prev_inst_ctx.pc_inst_address)
+                               || (mem_inst_ctx.inst            != prev_inst_ctx.inst));
+    assign commit_valid_o  = (prev_inst_ctx.inst != 32'b0)
+                           && ((mem_inst_ctx.pc_inst_address != prev_inst_ctx.pc_inst_address)
+                               || (mem_inst_ctx.inst            != prev_inst_ctx.inst));
     assign commit_pc_o    = prev_inst_ctx.pc_inst_address;
     assign commit_instr_o = prev_inst_ctx.inst;
     assign commit_wen_o   = (prev_inst_ctx.rd_addr != 5'b0);

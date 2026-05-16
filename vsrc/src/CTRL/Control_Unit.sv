@@ -26,6 +26,7 @@ module Control_Unit (
 
     input  logic      ex_pc_should_jump,
     input  u64        ex_pc_jump_address,
+    input  PRIV_2_CTRL priv_2_ctrl,
 
     output logic      stall_if,
     output logic      stall_id,
@@ -33,16 +34,18 @@ module Control_Unit (
     output logic      stall_mem,
     output logic      insert_bubble,
     output logic      flush_if_id,
+    output logic      flush_ex,
+    output logic      flush_mem,
 
     output logic      pc_should_jump,
     output u64        pc_jump_address
 );
 
-    // 全局阻塞：取指未就绪 / 访存未就绪 / ALU 多周期单元（乘除法）忙
-    logic pipeline_stall;
-    assign pipeline_stall = !if_2_ctrl.is_inst_ready
-                          || !is_mem_ready
-                          || ex_2_ctrl.is_alu_busy;
+    // 切面 A：全局阻塞（取指 / 访存 / ALU 多周期）
+    logic req_global_stall;
+    assign req_global_stall = !if_2_ctrl.is_inst_ready
+                            || !is_mem_ready
+                            || ex_2_ctrl.is_alu_busy;
 
     // load-use 冒险：EX 位是 load，且其 rd 与 ID 位消费者 rs1/rs2 匹配（rd != 0）
     logic load_use_hazard;
@@ -62,24 +65,46 @@ module Control_Unit (
                             || (mem_2_ctrl.rd_addr != 5'b0 && mem_2_ctrl.rd_addr == id_2_ctrl.rs1_addr));
 
     // IF / ID 冻结；EX / MEM / WB 正常推进让 load / 写者自己走到 MEM/WB 出口
-    logic id_hazard;
-    assign id_hazard = load_use_hazard || csr_rs1_hazard;
+    // 切面 B：数据冒险
+    logic req_data_stall;
+    assign req_data_stall = load_use_hazard || csr_rs1_hazard;
 
-    assign stall_if  = pipeline_stall || id_hazard;
-    assign stall_id  = pipeline_stall || id_hazard;
-    assign stall_ex  = pipeline_stall;
-    assign stall_mem = pipeline_stall;
+    // 切面 C/D：控制冒险与特权重定向
+    logic req_branch_flush;
+    logic req_trap_flush;
+    assign req_branch_flush = ex_pc_should_jump;
+    assign req_trap_flush   = priv_2_ctrl.is_trap_fire || priv_2_ctrl.is_mret_fire;
+
+    assign stall_if  = req_global_stall || req_data_stall;
+    assign stall_id  = req_global_stall || req_data_stall;
+    assign stall_ex  = req_global_stall;
+    assign stall_mem = req_global_stall;
 
     // ID/EX bubble：ID 段 hazard（load-use / csr-rs1）或 EX 决出跳转
     // pipeline_stall 时所有级已冻结，不应覆盖
-    assign insert_bubble = (id_hazard || ex_pc_should_jump) && !pipeline_stall;
+    assign insert_bubble = (req_data_stall || req_branch_flush || req_trap_flush) && !req_global_stall;
 
     // IF/ID flush：仅在跳转命中时清掉 speculative 取的下一拍指令
     // load-use / csr-rs1 不能 flush（IF/ID 里那条正是要保留、下拍重走的消费者）
-    assign flush_if_id = ex_pc_should_jump && !pipeline_stall;
+    assign flush_if_id = (req_branch_flush || req_trap_flush) && !req_global_stall;
 
-    // EX 当拍的跳转反馈直接转给 IF
-    assign pc_should_jump  = ex_pc_should_jump;
-    assign pc_jump_address = ex_pc_jump_address;
+    assign flush_ex  = req_trap_flush && !req_global_stall;
+    assign flush_mem = req_trap_flush && !req_global_stall;
+
+    // PC mux 优先级：trap > mret > branch > 顺序
+    always_comb begin
+        if (priv_2_ctrl.is_trap_fire) begin
+            pc_should_jump  = 1'b1;
+            pc_jump_address = priv_2_ctrl.trap_vector;
+        end
+        else if (priv_2_ctrl.is_mret_fire) begin
+            pc_should_jump  = 1'b1;
+            pc_jump_address = priv_2_ctrl.mepc_value;
+        end
+        else begin
+            pc_should_jump  = req_branch_flush;
+            pc_jump_address = ex_pc_jump_address;
+        end
+    end
 
 endmodule

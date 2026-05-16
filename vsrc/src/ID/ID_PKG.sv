@@ -19,6 +19,11 @@ package ID_PKG;
     localparam logic [6:0] OP_JALR   = 7'b1100111;
     localparam logic [6:0] OP_LUI    = 7'b0110111;
     localparam logic [6:0] OP_AUIPC  = 7'b0010111;
+    localparam logic [6:0] OP_SYSTEM = 7'b1110011;
+
+    // SYSTEM/funct3=000 指令
+    localparam logic [11:0] FUNCT12_ECALL = 12'h000;
+    localparam logic [11:0] FUNCT12_MRET  = 12'h302;
 
     // funct7 关键编码
     localparam logic [6:0] FUNCT7_M       = 7'b0000001;  // M 扩展（当前未迁移）

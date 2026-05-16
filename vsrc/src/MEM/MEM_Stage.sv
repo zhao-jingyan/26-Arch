@@ -19,12 +19,15 @@ module MEM_Stage (
     input  logic       rst_n,
 
     input  logic       stall,
+    input  logic       flush,
 
     input  INST_CTX    inst_ctx_in,
+    input  TRAP_CTX    trap_ctx_in,
     input  EX_2_MEM    ex_2_mem,
     input  CSR_WRITE   csr_write_in,
 
     output INST_CTX    inst_ctx_out,
+    output TRAP_CTX    trap_ctx_out,
     output MEM_2_WB    mem_2_wb,
     output MEM_2_FWD   mem_2_fwd,
     output MEM_2_CTRL  mem_2_ctrl,
@@ -74,11 +77,19 @@ module MEM_Stage (
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             inst_ctx_out  <= '0;
+            trap_ctx_out  <= '0;
+            mem_2_wb      <= '0;
+            csr_write_out <= '0;
+        end
+        else if (flush) begin
+            inst_ctx_out  <= '0;
+            trap_ctx_out  <= '0;
             mem_2_wb      <= '0;
             csr_write_out <= '0;
         end
         else if (!stall && is_mem_ready) begin
             inst_ctx_out      <= inst_ctx_in;
+            trap_ctx_out      <= trap_ctx_in;
             mem_2_wb.rd_data  <= rd_data;
             mem_2_wb.mem_addr <= ex_2_mem.ex_result;  // 供 commit 层做 Difftest skip 判定
             csr_write_out     <= csr_write_in;

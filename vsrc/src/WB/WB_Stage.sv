@@ -14,12 +14,15 @@ import common::*;
 import top_pkg::*;
 
 module WB_Stage (
-    input  INST_CTX  inst_ctx,
-    input  MEM_2_WB  mem_2_wb,
-    input  CSR_WRITE csr_write,
+    input  INST_CTX      inst_ctx,
+    input  TRAP_CTX      trap_ctx,
+    input  MEM_2_WB      mem_2_wb,
+    input  CSR_WRITE     csr_write,
+    input  logic         commit_valid,
 
-    output WB_2_ID   wb_2_id,
-    output CSR_WRITE wb_2_csr
+    output WB_2_ID       wb_2_id,
+    output CSR_WRITE     wb_2_csr,
+    output WB_TRAP_EVENT wb_trap_event
 );
 
     // rd_addr 为 0（x0 或 Decoder 已清零的 S/B-type）时不写回；
@@ -30,5 +33,9 @@ module WB_Stage (
 
     // CSR 写直通：MEM/WB 寄存器输出当拍即驱动 CSRFile 写口
     assign wb_2_csr = csr_write;
+
+    assign wb_trap_event.is_trap_commit = commit_valid;
+    assign wb_trap_event.trap_ctx       = trap_ctx;
+    assign wb_trap_event.epc            = inst_ctx.pc_inst_address;
 
 endmodule

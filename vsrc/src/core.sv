@@ -28,6 +28,7 @@ module core import common::*; import top_pkg::*; (
 	logic       commit_skip;
 	word_t      gpr [0:31];
 	CSR_STATE   csr_state;
+	PRIV_MODE   priv_mode;
 
 	Top u_top (
 		.clk            ( clk ),
@@ -44,7 +45,8 @@ module core import common::*; import top_pkg::*; (
 		.commit_wdata_o ( commit_wdata ),
 		.commit_skip_o  ( commit_skip ),
 		.gpr_o          ( gpr ),
-		.csr_state_o    ( csr_state )
+		.csr_state_o    ( csr_state ),
+		.priv_mode_o    ( priv_mode )
 	);
 
 `ifdef VERILATOR
@@ -118,7 +120,7 @@ module core import common::*; import top_pkg::*; (
 	DifftestCSRState DifftestCSRState(
 		.clock              (clk),
 		.coreid             (0),
-		.priviledgeMode     (3),                  // 仅 M-mode
+		.priviledgeMode     ({2'b00, priv_mode}),
 		.mstatus            (csr_state.mstatus),
 		.sstatus            (sstatus),
 		.mepc               (csr_state.mepc),

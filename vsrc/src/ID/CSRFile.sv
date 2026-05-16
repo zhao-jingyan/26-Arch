@@ -30,8 +30,17 @@ module CSRFile (
     input  u12       write_addr,
     input  u64       write_data,
 
+    // trap 写口（同步），优先级高于软件 CSR 写
+    input  logic     trap_write_en,
+    input  u64       trap_mstatus_next,
+    input  u64       trap_mepc_next,
+    input  u64       trap_mcause_next,
+    input  u64       trap_mtval_next,
+
     // CSRFile 快照：DifftestCSRState 字段表内的 9 个 CSR；mcycle / mhartid 不在内
-    output CSR_STATE csr_state
+    output CSR_STATE csr_state,
+    output u64       mtvec_value,
+    output u64       mepc_value
 );
 
     // 内部寄存器（mhartid 不分配，硬连 0）
@@ -85,7 +94,8 @@ module CSRFile (
     //   非法地址或 mhartid 忽略 bypass（read 端默认 0 / 硬 0），由下方 hit 判定屏蔽
     // ------------------------------------------------------------------------
     logic bypass_hit;
-    assign bypass_hit = write_en
+    assign bypass_hit = !trap_write_en
+                     && write_en
                      && (read_addr == write_addr)
                      && (read_addr != CSR_MHARTID);
 
@@ -110,12 +120,18 @@ module CSRFile (
             satp     <= 64'b0;
         end else begin
             // mcycle 默认每拍自增，被软件写覆盖时优先采用写值
-            if (write_en && write_addr == CSR_MCYCLE)
+            if (!trap_write_en && write_en && write_addr == CSR_MCYCLE)
                 mcycle <= write_data;
             else
                 mcycle <= mcycle + 64'b1;
 
-            if (write_en) begin
+            if (trap_write_en) begin
+                mstatus <= apply_mask(CSR_MSTATUS, trap_mstatus_next, mstatus);
+                mepc    <= trap_mepc_next;
+                mcause  <= trap_mcause_next;
+                mtval   <= trap_mtval_next;
+            end
+            else if (write_en) begin
                 unique case (write_addr)
                     CSR_MSTATUS:  mstatus  <= apply_mask(CSR_MSTATUS, write_data, mstatus);
                     CSR_MTVEC:    mtvec    <= apply_mask(CSR_MTVEC,   write_data, mtvec);
@@ -143,5 +159,8 @@ module CSRFile (
     assign csr_state.mtval    = mtval;
     assign csr_state.mepc     = mepc;
     assign csr_state.satp     = satp;
+
+    assign mtvec_value = mtvec;
+    assign mepc_value  = mepc;
 
 endmodule

@@ -17,6 +17,12 @@ package top_pkg;
     import common::*;
     import EX_PKG::*;
 
+    typedef enum logic [1:0] {
+        PRIV_U = 2'b00,
+        PRIV_S = 2'b01,
+        PRIV_M = 2'b11
+    } PRIV_MODE;
+
     // IF/ID 流水线寄存器
     typedef struct packed {
         u32 inst;
@@ -35,6 +41,15 @@ package top_pkg;
         u5  rd_addr;  // S/B-type 已在 Decoder 清零
         u7  opcode;   // MEM 识别 load/store 用
     } INST_CTX;
+
+    // 与 INST_CTX 并行透传的 trap / exception 上下文
+    typedef struct packed {
+        logic is_ecall;
+        logic is_mret;
+        logic exc_valid;
+        logic [3:0] exc_cause;
+        u64   exc_tval;
+    } TRAP_CTX;
 
     // WB 对 ID 的反馈：仅写回三元组，不含 commit 信息
     typedef struct packed {
@@ -140,6 +155,21 @@ package top_pkg;
         u12   write_addr;
         u64   write_data;
     } CSR_WRITE;
+
+    // WB → Privilege_Unit：已提交 trap 事件
+    typedef struct packed {
+        logic    is_trap_commit;
+        TRAP_CTX trap_ctx;
+        u64      epc;
+    } WB_TRAP_EVENT;
+
+    // Privilege_Unit → Control_Unit：trap / mret 重定向反馈
+    typedef struct packed {
+        logic is_trap_fire;
+        logic is_mret_fire;
+        u64   trap_vector;
+        u64   mepc_value;
+    } PRIV_2_CTRL;
 
 endpackage
 

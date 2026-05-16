@@ -19,9 +19,6 @@ package CSR_PKG;
         CSR_RCI  = 3'd6
     } CSR_OP;
 
-    // SYSTEM opcode（Zicsr）
-    localparam logic [6:0] OP_SYSTEM = 7'b1110011;
-
     // funct3：CSR 指令子类型
     localparam logic [2:0] FUNCT3_CSRRW  = 3'b001;
     localparam logic [2:0] FUNCT3_CSRRS  = 3'b010;
@@ -43,6 +40,16 @@ package CSR_PKG;
     localparam logic [11:0] CSR_MHARTID  = 12'hf14;
     localparam logic [11:0] CSR_SATP     = 12'h180;
 
+    // mcause 编码
+    localparam logic [63:0] MCAUSE_ECALL_U = 64'd8;
+    localparam logic [63:0] MCAUSE_ECALL_M = 64'd11;
+
+    // mstatus 字段位置
+    localparam int MSTATUS_MIE_BIT  = 3;
+    localparam int MSTATUS_MPIE_BIT = 7;
+    localparam int MSTATUS_MPRV_BIT = 17;
+    localparam int MSTATUS_MPP_LSB  = 11;
+
     // WARL / WPRI mask（与 include/csr.sv 对齐）
     // mstatus：仅保留可写位
     localparam logic [63:0] MSTATUS_MASK = 64'h7e79bb;
@@ -50,6 +57,38 @@ package CSR_PKG;
     localparam logic [63:0] MTVEC_MASK   = ~64'h2;
     // mip：仅 SSIP/MSIP/STIP/MTIP/SEIP/MEIP 可由软件写
     localparam logic [63:0] MIP_MASK     = 64'h333;
+
+    function automatic logic [63:0] mstatus_set_mie(input logic [63:0] value, input logic mie);
+        mstatus_set_mie = value;
+        mstatus_set_mie[MSTATUS_MIE_BIT] = mie;
+    endfunction
+
+    function automatic logic [63:0] mstatus_set_mpie(input logic [63:0] value, input logic mpie);
+        mstatus_set_mpie = value;
+        mstatus_set_mpie[MSTATUS_MPIE_BIT] = mpie;
+    endfunction
+
+    function automatic logic [63:0] mstatus_set_mpp(input logic [63:0] value, input logic [1:0] mpp);
+        mstatus_set_mpp = value;
+        mstatus_set_mpp[MSTATUS_MPP_LSB +: 2] = mpp;
+    endfunction
+
+    function automatic logic [63:0] mstatus_set_mprv(input logic [63:0] value, input logic mprv);
+        mstatus_set_mprv = value;
+        mstatus_set_mprv[MSTATUS_MPRV_BIT] = mprv;
+    endfunction
+
+    function automatic logic mstatus_get_mie(input logic [63:0] value);
+        mstatus_get_mie = value[MSTATUS_MIE_BIT];
+    endfunction
+
+    function automatic logic mstatus_get_mpie(input logic [63:0] value);
+        mstatus_get_mpie = value[MSTATUS_MPIE_BIT];
+    endfunction
+
+    function automatic logic [1:0] mstatus_get_mpp(input logic [63:0] value);
+        mstatus_get_mpp = value[MSTATUS_MPP_LSB +: 2];
+    endfunction
 endpackage
 
 `endif

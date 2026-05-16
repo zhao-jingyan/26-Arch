@@ -35,6 +35,8 @@ module MMU (
 
     state_t    state;
     dbus_req_t saved_request;
+    u64        saved_satp;
+    logic      translate_saved;
     u64        pte;
     logic [1:0] leaf_level;  // 2=L2 1GiB, 1=L1 2MiB, 0=L0 4KiB
 
@@ -60,7 +62,7 @@ module MMU (
     u64 walk_addr;
     u64 translated_addr;
 
-    assign root_base = {8'b0, satp[43:0], 12'b0};
+    assign root_base = {8'b0, saved_satp[43:0], 12'b0};
     assign pte_base  = {8'b0, pte[53:10], 12'b0};
 
     always_comb begin
@@ -108,6 +110,8 @@ module MMU (
         if (!rst_n) begin
             state         <= IDLE;
             saved_request <= '0;
+            saved_satp    <= '0;
+            translate_saved <= 1'b0;
             pte           <= '0;
             leaf_level    <= 2'd0;
         end
@@ -115,19 +119,26 @@ module MMU (
             unique case (state)
                 IDLE: begin
                     if (upstream_request.valid) begin
-                        saved_request <= upstream_request;
+                        saved_request   <= upstream_request;
+                        saved_satp      <= satp;
+                        translate_saved <= should_translate;
                         state <= should_translate ? WALK_L2 : PASSTHROUGH;
                     end
                 end
                 PASSTHROUGH: begin
                     if (downstream_response.data_ok) begin
-                        state <= IDLE;
+                        state           <= IDLE;
+                        translate_saved <= 1'b0;
                     end
                 end
                 WALK_L2: begin
                     if (downstream_response.data_ok) begin
-                        pte   <= downstream_response.data;
-                        if (is_leaf_pte(downstream_response.data)) begin
+                        pte <= downstream_response.data;
+                        if (!should_translate) begin
+                            state           <= IDLE;
+                            translate_saved <= 1'b0;
+                        end
+                        else if (is_leaf_pte(downstream_response.data)) begin
                             leaf_level <= 2'd2;
                             state      <= ACCESS;
                         end
@@ -138,8 +149,12 @@ module MMU (
                 end
                 WALK_L1: begin
                     if (downstream_response.data_ok) begin
-                        pte   <= downstream_response.data;
-                        if (is_leaf_pte(downstream_response.data)) begin
+                        pte <= downstream_response.data;
+                        if (!should_translate) begin
+                            state           <= IDLE;
+                            translate_saved <= 1'b0;
+                        end
+                        else if (is_leaf_pte(downstream_response.data)) begin
                             leaf_level <= 2'd1;
                             state      <= ACCESS;
                         end
@@ -150,14 +165,21 @@ module MMU (
                 end
                 WALK_L0: begin
                     if (downstream_response.data_ok) begin
-                        pte        <= downstream_response.data;
-                        leaf_level <= 2'd0;
-                        state      <= ACCESS;
+                        pte <= downstream_response.data;
+                        if (!should_translate) begin
+                            state           <= IDLE;
+                            translate_saved <= 1'b0;
+                        end
+                        else begin
+                            leaf_level <= 2'd0;
+                            state      <= ACCESS;
+                        end
                     end
                 end
                 ACCESS: begin
                     if (downstream_response.data_ok) begin
-                        state <= IDLE;
+                        state           <= IDLE;
+                        translate_saved <= 1'b0;
                     end
                 end
                 default: begin

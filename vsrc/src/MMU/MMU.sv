@@ -36,6 +36,7 @@ module MMU (
     state_t    state;
     dbus_req_t saved_request;
     u64        pte;
+    logic [1:0] leaf_level;  // 2=L2 1GiB, 1=L1 2MiB, 0=L0 4KiB
 
     logic is_virtual_priv;
     logic is_sv39_mode;
@@ -55,9 +56,16 @@ module MMU (
     u64 walk_addr;
     u64 translated_addr;
 
-    assign root_base       = {8'b0, satp[43:0], 12'b0};
-    assign pte_base        = {8'b0, pte[53:10], 12'b0};
-    assign translated_addr = {8'b0, pte[53:10], saved_request.addr[11:0]};
+    assign root_base = {8'b0, satp[43:0], 12'b0};
+    assign pte_base  = {8'b0, pte[53:10], 12'b0};
+
+    always_comb begin
+        unique case (leaf_level)
+            2'd2:    translated_addr = {8'b0, pte[53:28], saved_request.addr[29:0]};
+            2'd1:    translated_addr = {8'b0, pte[53:19], saved_request.addr[20:0]};
+            default: translated_addr = {8'b0, pte[53:10], saved_request.addr[11:0]};
+        endcase
+    end
 
     always_comb begin
         unique case (state)
@@ -97,6 +105,7 @@ module MMU (
             state         <= IDLE;
             saved_request <= '0;
             pte           <= '0;
+            leaf_level    <= 2'd0;
         end
         else begin
             unique case (state)
@@ -114,19 +123,32 @@ module MMU (
                 WALK_L2: begin
                     if (downstream_response.data_ok) begin
                         pte   <= downstream_response.data;
-                        state <= WALK_L1;
+                        if (downstream_response.data[1] || downstream_response.data[3]) begin
+                            leaf_level <= 2'd2;
+                            state      <= ACCESS;
+                        end
+                        else begin
+                            state <= WALK_L1;
+                        end
                     end
                 end
                 WALK_L1: begin
                     if (downstream_response.data_ok) begin
                         pte   <= downstream_response.data;
-                        state <= WALK_L0;
+                        if (downstream_response.data[1] || downstream_response.data[3]) begin
+                            leaf_level <= 2'd1;
+                            state      <= ACCESS;
+                        end
+                        else begin
+                            state <= WALK_L0;
+                        end
                     end
                 end
                 WALK_L0: begin
                     if (downstream_response.data_ok) begin
-                        pte   <= downstream_response.data;
-                        state <= ACCESS;
+                        pte        <= downstream_response.data;
+                        leaf_level <= 2'd0;
+                        state      <= ACCESS;
                     end
                 end
                 ACCESS: begin

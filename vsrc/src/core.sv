@@ -116,7 +116,7 @@ module core import common::*; import top_pkg::*; (
 	DifftestCSRState DifftestCSRState(
 		.clock              (clk),
 		.coreid             (0),
-		.priviledgeMode     ({2'b00, priv_mode}),
+		.priviledgeMode     (priv_mode),
 		.mstatus            (csr_state.mstatus),
 		.sstatus            (sstatus),
 		.mepc               (csr_state.mepc),

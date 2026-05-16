@@ -12,6 +12,7 @@ import common::*;
 module Inst_Fetch (
     input  logic       clk,
     input  logic       rst_n,
+    input  logic       flush,
 
     input  u64         pc_inst_address,
 
@@ -33,6 +34,7 @@ module Inst_Fetch (
     u64   request_addr;
     u64   pending_addr;
     logic pending_valid;
+    logic pending_kill;
     logic response_matches_pc;
 
     // 命中：已缓存地址与当前 PC 匹配
@@ -69,16 +71,25 @@ module Inst_Fetch (
             latched_valid <= 1'b0;
             pending_addr  <= '0;
             pending_valid <= 1'b0;
+            pending_kill  <= 1'b0;
         end
         else begin
-            if (!pending_valid && !is_inst_ready) begin
+            if (flush) begin
+                latched_valid <= 1'b0;
+                if (pending_valid)
+                    pending_kill <= 1'b1;
+            end
+
+            if (!flush && !pending_valid && !is_inst_ready) begin
                 pending_addr  <= pc_inst_address;
                 pending_valid <= 1'b1;
+                pending_kill  <= 1'b0;
             end
 
             if (is_response_valid && pending_valid) begin
                 pending_valid <= 1'b0;
-                if (response_matches_pc) begin
+                pending_kill  <= 1'b0;
+                if (response_matches_pc && !pending_kill && !flush) begin
                     latched_addr  <= pending_addr;
                     latched_inst  <= inst_word;
                     latched_valid <= 1'b1;

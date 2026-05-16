@@ -51,6 +51,7 @@ module IF_Stage (
     Inst_Fetch u_inst_fetch (
         .clk              ( clk ),
         .rst_n            ( rst_n ),
+        .flush            ( flush || pc_should_jump ),
 
         .pc_inst_address  ( pc_inst_address_cur ),
 

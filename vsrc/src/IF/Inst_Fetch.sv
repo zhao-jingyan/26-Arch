@@ -30,19 +30,25 @@ module Inst_Fetch (
     u32   inst_word;
     logic is_response_valid;
     logic request_valid;
+    u64   request_addr;
+    u64   pending_addr;
+    logic pending_valid;
+    logic response_matches_pc;
 
     // 命中：已缓存地址与当前 PC 匹配
     assign is_inst_ready = latched_valid && (latched_addr == pc_inst_address);
     assign inst          = latched_inst;
-    assign request_valid = !is_inst_ready;
+    assign request_valid = pending_valid || !is_inst_ready;
+    assign request_addr  = pending_valid ? pending_addr : pc_inst_address;
+    assign response_matches_pc = pending_valid && (pending_addr == pc_inst_address);
 
-    assign inst_word = pc_inst_address[2] ? response_data[63:32] : response_data[31:0];
+    assign inst_word = pending_addr[2] ? response_data[63:32] : response_data[31:0];
 
     DataMemory u_data_memory (
         .clk                ( clk ),
         .rst_n              ( rst_n ),
 
-        .request_addr       ( pc_inst_address ),
+        .request_addr       ( request_addr ),
         .request_valid      ( request_valid ),
         .request_size       ( MSIZE4 ),
         .request_strobe     ( 8'b0 ),
@@ -55,17 +61,29 @@ module Inst_Fetch (
         .dbus_response      ( dbus_response )
     );
 
-    // 指令到达时 latch；addr 在等待期间由外部 pc_stall 保证稳定
+    // 指令到达时 latch；若跳转已改变 PC，则丢弃旧请求的响应
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             latched_addr  <= '0;
             latched_inst  <= '0;
             latched_valid <= 1'b0;
+            pending_addr  <= '0;
+            pending_valid <= 1'b0;
         end
-        else if (is_response_valid && !is_inst_ready) begin
-            latched_addr  <= pc_inst_address;
-            latched_inst  <= inst_word;
-            latched_valid <= 1'b1;
+        else begin
+            if (!pending_valid && !is_inst_ready) begin
+                pending_addr  <= pc_inst_address;
+                pending_valid <= 1'b1;
+            end
+
+            if (is_response_valid && pending_valid) begin
+                pending_valid <= 1'b0;
+                if (response_matches_pc) begin
+                    latched_addr  <= pending_addr;
+                    latched_inst  <= inst_word;
+                    latched_valid <= 1'b1;
+                end
+            end
         end
     end
 

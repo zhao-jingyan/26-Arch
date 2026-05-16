@@ -37,8 +37,14 @@ module MMU (
     dbus_req_t saved_request;
     u64        pte;
 
+    logic is_virtual_priv;
+    logic is_sv39_mode;
     logic should_translate;
-    assign should_translate = (priv_mode != PRIV_M) && (satp[63:60] == 4'd8);
+
+    // 仅 S/U 模式且 satp.MODE=Sv39 时启用地址翻译
+    assign is_virtual_priv  = (priv_mode == PRIV_S) || (priv_mode == PRIV_U);
+    assign is_sv39_mode     = satp[63:60] == 4'd8;
+    assign should_translate = is_virtual_priv && is_sv39_mode;
 
     function automatic u64 pte_addr(input u64 base, input logic [8:0] vpn);
         pte_addr = base + {52'b0, vpn, 3'b000};

@@ -6582,7 +6582,7 @@ Disassembly of section .text.mtrap:
     80008020:	00000297          	auipc	t0,0x0
     80008024:	04828293          	addi	t0,t0,72 # 80008068 <m_test_trap_entry>
     80008028:	30529073          	csrw	mtvec,t0
-    8000802c:	1f400413          	li	s0,500
+    8000802c:	03100413          	li	s0,49
     80008030:	000284b7          	lui	s1,0x28
     80008034:	01400513          	li	a0,20
     80008038:	f38f90ef          	jal	ra,80001770 <set_timer>

@@ -36,6 +36,15 @@ module Fetch_Data (
     msize_t  req_size;
     strobe_t req_strobe;
     u64      req_wdata;
+    logic    pending_valid;
+    u64      pending_addr;
+    msize_t  pending_size;
+    strobe_t pending_strobe;
+    u64      pending_wdata;
+    u3       pending_funct3;
+    u3       pending_byte_idx;
+    u3       data_byte_idx;
+    u3       data_funct3;
 
     assign byte_idx = mem_addr[2:0];
 
@@ -75,11 +84,11 @@ module Fetch_Data (
     u64   load_data_shifted;
     u64   load_data_ext;
 
-    assign load_data_shifted = response_data >> (byte_idx * 8);
+    assign load_data_shifted = response_data >> (data_byte_idx * 8);
 
     always_comb begin
         load_data_ext = load_data_shifted;
-        unique case (funct3)
+        unique case (data_funct3)
             3'b000: load_data_ext = {{56{load_data_shifted[7]}},  load_data_shifted[7:0]};   // lb
             3'b001: load_data_ext = {{48{load_data_shifted[15]}}, load_data_shifted[15:0]};  // lh
             3'b010: load_data_ext = {{32{load_data_shifted[31]}}, load_data_shifted[31:0]};  // lw
@@ -105,8 +114,10 @@ module Fetch_Data (
                        && (latched_pc   == pc_inst_address)
                        && (latched_inst == inst);
 
-    assign is_mem_ready  = !is_mem || is_same_inst;
-    assign request_valid = is_mem && !is_mem_ready;
+    assign is_mem_ready  = !pending_valid && (!is_mem || is_same_inst);
+    assign request_valid = pending_valid || (is_mem && !is_mem_ready);
+    assign data_byte_idx = pending_valid ? pending_byte_idx : byte_idx;
+    assign data_funct3   = pending_valid ? pending_funct3   : funct3;
     assign load_data     = is_same_inst ? latched_data : load_data_ext;
 
     always_ff @(posedge clk or negedge rst_n) begin
@@ -115,6 +126,13 @@ module Fetch_Data (
             latched_inst  <= '0;
             latched_data  <= '0;
             latched_valid <= 1'b0;
+            pending_valid <= 1'b0;
+            pending_addr  <= '0;
+            pending_size  <= MSIZE1;
+            pending_strobe <= '0;
+            pending_wdata <= '0;
+            pending_funct3 <= '0;
+            pending_byte_idx <= '0;
         end
         // 本拍响应回来（且尚未 latch）→ 覆盖式 latch 当前 pc/inst/data
         // 同时也覆盖了「上一条 mem 指令离开后 latch 残留」的清理需求
@@ -123,6 +141,17 @@ module Fetch_Data (
             latched_inst  <= inst;
             latched_data  <= load_data_ext;  // store 不使用此字段
             latched_valid <= 1'b1;
+            pending_valid <= 1'b0;
+        end
+        // 访存请求一旦发出，在响应回来前保持请求内容稳定。
+        else if (!pending_valid && is_mem && !is_mem_ready) begin
+            pending_valid    <= 1'b1;
+            pending_addr     <= mem_addr;
+            pending_size     <= req_size;
+            pending_strobe   <= req_strobe;
+            pending_wdata    <= req_wdata;
+            pending_funct3   <= funct3;
+            pending_byte_idx <= byte_idx;
         end
         // 持 latch 的指令已离开 MEM（本拍 pc/inst 与 latch 不同）→ 让 latch 失效
         // 防止循环中同 PC 再次进入时误命中陈旧 latched_data
@@ -136,11 +165,11 @@ module Fetch_Data (
         .clk                ( clk ),
         .rst_n              ( rst_n ),
 
-        .request_addr       ( mem_addr ),
+        .request_addr       ( pending_valid ? pending_addr    : mem_addr ),
         .request_valid      ( request_valid ),
-        .request_size       ( req_size ),
-        .request_strobe     ( req_strobe ),
-        .request_write_data ( req_wdata ),
+        .request_size       ( pending_valid ? pending_size    : req_size ),
+        .request_strobe     ( pending_valid ? pending_strobe  : req_strobe ),
+        .request_write_data ( pending_valid ? pending_wdata   : req_wdata ),
 
         .response_data      ( response_data ),
         .is_response_valid  ( is_response_valid ),

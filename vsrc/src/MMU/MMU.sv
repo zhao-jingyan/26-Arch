@@ -134,7 +134,7 @@ module MMU (
                 WALK_L2: begin
                     if (downstream_response.data_ok) begin
                         pte <= downstream_response.data;
-                        if (!should_translate) begin
+                        if (!translate_saved) begin
                             state           <= IDLE;
                             translate_saved <= 1'b0;
                         end
@@ -150,7 +150,7 @@ module MMU (
                 WALK_L1: begin
                     if (downstream_response.data_ok) begin
                         pte <= downstream_response.data;
-                        if (!should_translate) begin
+                        if (!translate_saved) begin
                             state           <= IDLE;
                             translate_saved <= 1'b0;
                         end
@@ -166,7 +166,7 @@ module MMU (
                 WALK_L0: begin
                     if (downstream_response.data_ok) begin
                         pte <= downstream_response.data;
-                        if (!should_translate) begin
+                        if (!translate_saved) begin
                             state           <= IDLE;
                             translate_saved <= 1'b0;
                         end

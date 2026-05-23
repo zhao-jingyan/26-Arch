@@ -34,24 +34,20 @@ module CBusMMU (
         WALK_L1,
         WALK_L0,
         ACCESS,
-        DEBUG
+        WAIT
     } state_t;
 
     state_t    state;
-    state_t    debug_resume_state;
+    state_t    wait_resume_state;
     cbus_req_t saved_request;
     u64        saved_satp;
     u64        pte;
     logic [1:0] leaf_level;  // 2=L2 1GiB，1=L1 2MiB，0=L0 4KiB
-    u8         debug_char;
 
     logic is_virtual_priv;
     logic is_sv39_mode;
     logic should_translate;
     logic downstream_done;
-
-    localparam logic ENABLE_UART_DEBUG = 1'b1;
-    localparam u64   UART_TX_DATA      = 64'h40600004;
 
     function automatic logic is_leaf_pte(input u64 pte_data);
         is_leaf_pte = pte_data[0] && (pte_data[1] || pte_data[3]);
@@ -115,16 +111,6 @@ module CBusMMU (
                 downstream_request.addr = translated_addr;
                 upstream_response       = downstream_response;
             end
-            DEBUG: begin
-                downstream_request.valid    = 1'b1;
-                downstream_request.is_write = 1'b1;
-                downstream_request.size     = MSIZE1;
-                downstream_request.addr     = UART_TX_DATA;
-                downstream_request.strobe   = 8'h10;
-                downstream_request.data     = {24'b0, debug_char, 32'b0};
-                downstream_request.len      = MLEN1;
-                downstream_request.burst    = AXI_BURST_FIXED;
-            end
             default: ;
         endcase
     end
@@ -136,14 +122,7 @@ module CBusMMU (
                     if (upstream_request.valid) begin
                         saved_request <= upstream_request;
                         saved_satp    <= satp;
-                        if (should_translate && ENABLE_UART_DEBUG) begin
-                            debug_char         <= "2";
-                            debug_resume_state <= WALK_L2;
-                            state              <= DEBUG;
-                        end
-                        else begin
-                            state <= should_translate ? WALK_L2 : PASSTHROUGH;
-                        end
+                        state         <= should_translate ? WALK_L2 : PASSTHROUGH;
                     end
                 end
                 PASSTHROUGH: begin
@@ -155,17 +134,12 @@ module CBusMMU (
                         pte <= downstream_response.data;
                         if (is_leaf_pte(downstream_response.data)) begin
                             leaf_level <= 2'd2;
-                            state      <= ACCESS;
+                            wait_resume_state <= ACCESS;
+                            state             <= WAIT;
                         end
                         else begin
-                            if (ENABLE_UART_DEBUG) begin
-                                debug_char         <= "1";
-                                debug_resume_state <= WALK_L1;
-                                state              <= DEBUG;
-                            end
-                            else begin
-                                state <= WALK_L1;
-                            end
+                            wait_resume_state <= WALK_L1;
+                            state             <= WAIT;
                         end
                     end
                 end
@@ -174,41 +148,29 @@ module CBusMMU (
                         pte <= downstream_response.data;
                         if (is_leaf_pte(downstream_response.data)) begin
                             leaf_level <= 2'd1;
-                            state      <= ACCESS;
+                            wait_resume_state <= ACCESS;
+                            state             <= WAIT;
                         end
                         else begin
-                            if (ENABLE_UART_DEBUG) begin
-                                debug_char         <= "0";
-                                debug_resume_state <= WALK_L0;
-                                state              <= DEBUG;
-                            end
-                            else begin
-                                state <= WALK_L0;
-                            end
+                            wait_resume_state <= WALK_L0;
+                            state             <= WAIT;
                         end
                     end
                 end
                 WALK_L0: begin
                     if (downstream_done) begin
-                        pte        <= downstream_response.data;
-                        leaf_level <= 2'd0;
-                        if (ENABLE_UART_DEBUG) begin
-                            debug_char         <= "A";
-                            debug_resume_state <= ACCESS;
-                            state              <= DEBUG;
-                        end
-                        else begin
-                            state <= ACCESS;
-                        end
+                        pte               <= downstream_response.data;
+                        leaf_level        <= 2'd0;
+                        wait_resume_state <= ACCESS;
+                        state             <= WAIT;
                     end
                 end
                 ACCESS: begin
                     if (downstream_done)
                         state <= IDLE;
                 end
-                DEBUG: begin
-                    if (downstream_done)
-                        state <= debug_resume_state;
+                WAIT: begin
+                    state <= wait_resume_state;
                 end
                 default: begin
                     state <= IDLE;
@@ -217,12 +179,11 @@ module CBusMMU (
         end
         else begin
             state         <= IDLE;
-            debug_resume_state <= IDLE;
+            wait_resume_state <= IDLE;
             saved_request <= '0;
             saved_satp    <= '0;
             pte           <= '0;
             leaf_level    <= 2'd0;
-            debug_char    <= '0;
         end
     end
 

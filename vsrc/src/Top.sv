@@ -94,8 +94,8 @@ module Top (
     u64   ex_pc_jump_address;
     logic is_mem_ready;
 
-    dbus_req_t  fetch_dbus_req;
-    dbus_resp_t fetch_dbus_resp;
+    dbus_req_t  if_dbus_req;
+    dbus_resp_t if_dbus_resp;
     dbus_req_t  mem_dbus_req;
     dbus_resp_t mem_dbus_resp;
     PRIV_MODE   mmu_priv_mode;
@@ -185,8 +185,8 @@ module Top (
         .if_2_id         ( if_2_id ),
         .if_2_ctrl       ( if_2_ctrl ),
 
-        .dbus_request    ( fetch_dbus_req ),
-        .dbus_response   ( fetch_dbus_resp )
+        .dbus_request    ( if_dbus_req ),
+        .dbus_response   ( if_dbus_resp )
     );
 
     ID_Stage u_id (
@@ -265,12 +265,12 @@ module Top (
         .dbus_response ( mem_dbus_resp )
     );
 
-    assign ibus_req_o.valid = fetch_dbus_req.valid;
-    assign ibus_req_o.addr  = fetch_dbus_req.addr;
+    assign ibus_req_o.valid = if_dbus_req.valid;
+    assign ibus_req_o.addr  = if_dbus_req.addr;
 
-    assign fetch_dbus_resp.addr_ok = ibus_resp_i.addr_ok;
-    assign fetch_dbus_resp.data_ok = ibus_resp_i.data_ok;
-    assign fetch_dbus_resp.data    = {ibus_resp_i.data, ibus_resp_i.data};
+    assign if_dbus_resp.addr_ok = ibus_resp_i.addr_ok;
+    assign if_dbus_resp.data_ok = ibus_resp_i.data_ok;
+    assign if_dbus_resp.data    = {ibus_resp_i.data, ibus_resp_i.data};
 
     assign dbus_req_o  = mem_dbus_req;
     assign mem_dbus_resp = dbus_resp_i;

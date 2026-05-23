@@ -197,19 +197,12 @@ module device #(
 	// 板级 ready：仅对 TX_DATA 写字节流反压；读与其它写立即完成。
 	// 原先全局 ready=tx_ready 时，UART 发送期间任意 MMIO 读（含误落 device 的 PTE walk）
 	// 会永久 stall，仿真 RAMHelper 无此问题。
-	logic bus_read;
 	logic uart_tx_write;
-	assign bus_read      = valid && !wvalid;
 	assign uart_tx_write = valid && wvalid && (addr == TX_DATA);
 
-	if (SIMULATION)
-		assign ready = 1'b1;
-	else if (bus_read)
-		assign ready = 1'b1;
-	else if (uart_tx_write)
-		assign ready = tx_ready;
-	else
-		assign ready = 1'b1;
+	assign ready = SIMULATION ? 1'b1 :
+				   uart_tx_write ? tx_ready :
+				   1'b1;
 		
 	always_ff @(posedge clk) begin
 		if (~reset && valid && wvalid) begin

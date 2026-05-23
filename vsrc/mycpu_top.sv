@@ -22,6 +22,9 @@ module mycpu_top
 
   cbus_req_t  oreq;
   cbus_resp_t oresp;
+  cbus_req_t  board_req;
+  logic       board_busy;
+
   VTop VTop_inst (
       .clk,
       .reset,
@@ -29,16 +32,34 @@ module mycpu_top
       .oresp
   );
 
-  assign valid = oreq.valid;
-  assign addr = oreq.addr;
-  assign wdata = oreq.data;
+  // 上板外设/BRAM 返回较慢，请求发出后保持地址和写数据稳定直到响应完成。
+  always_ff @(posedge clk) begin
+    if (reset) begin
+      board_busy <= 1'b0;
+      board_req  <= '0;
+    end
+    else if (board_busy) begin
+      if (ready && last) begin
+        board_busy <= 1'b0;
+        board_req  <= '0;
+      end
+    end
+    else if (oreq.valid) begin
+      board_busy <= 1'b1;
+      board_req  <= oreq;
+    end
+  end
+
+  assign valid = board_busy;
+  assign addr = board_req.addr;
+  assign wdata = board_req.data;
   assign oresp.data = rdata;
-  assign wstrobe = oreq.strobe;
-  assign burst = oreq.burst;
-  assign len = oreq.len;
+  assign wstrobe = board_req.strobe;
+  assign burst = board_req.burst;
+  assign len = board_req.len;
   assign oresp.ready = ready;
   assign oresp.last = last;
-  assign size = oreq.size;
+  assign size = board_req.size;
 
 endmodule
 

@@ -28,8 +28,8 @@ module CBusArbiter
     int index, select;
     cbus_req_t saved_req, selected_req;
 
-    // assign oreq = ireqs[index];
-    assign oreq = busy ? ireqs[index] : '0;  // prevent early issue
+    // 事务被选中后必须保持请求稳定，直到下游完成响应。
+    assign oreq = busy ? saved_req : '0;  // prevent early issue
     assign selected_req = ireqs[select];
 
     // select a preferred request
@@ -61,7 +61,7 @@ module CBusArbiter
     always_ff @(posedge clk)
     if (~reset) begin
         if (busy) begin
-            if (oresp.last)
+            if (oresp.ready && oresp.last)
                 {busy, saved_req} <= '0;
         end else begin
             // if not valid, busy <= 0

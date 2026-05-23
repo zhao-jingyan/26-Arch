@@ -9,8 +9,13 @@
 
 module core import common::*; import top_pkg::*; (
 	input  logic       clk, reset,
+	output ibus_req_t  ireq,
+	input  ibus_resp_t iresp,
 	output dbus_req_t  dreq,
 	input  dbus_resp_t dresp,
+	output CSR_STATE   csr_state_o,
+	output PRIV_MODE   priv_mode_o,
+	output PRIV_MODE   mmu_priv_mode_o,
 	input  logic       trint, swint, exint
 );
 
@@ -27,10 +32,13 @@ module core import common::*; import top_pkg::*; (
 	word_t      gpr [0:31];
 	CSR_STATE   csr_state;
 	PRIV_MODE   priv_mode;
+	PRIV_MODE   mmu_priv_mode;
 
 	Top u_top (
 		.clk            ( clk ),
 		.rst_n          ( rst_n ),
+		.ibus_req_o     ( ireq ),
+		.ibus_resp_i    ( iresp ),
 		.dbus_req_o     ( dreq ),
 		.dbus_resp_i    ( dresp ),
 		.commit_valid_o ( commit_valid ),
@@ -42,8 +50,13 @@ module core import common::*; import top_pkg::*; (
 		.commit_skip_o  ( commit_skip ),
 		.gpr_o          ( gpr ),
 		.csr_state_o    ( csr_state ),
-		.priv_mode_o    ( priv_mode )
+		.priv_mode_o    ( priv_mode ),
+		.mmu_priv_mode_o( mmu_priv_mode )
 	);
+
+	assign csr_state_o      = csr_state;
+	assign priv_mode_o      = priv_mode;
+	assign mmu_priv_mode_o  = mmu_priv_mode;
 
 `ifdef VERILATOR
 	DifftestInstrCommit DifftestInstrCommit(

@@ -19,8 +19,8 @@ module CBusArbiter
 ) (
     input logic clk, reset,
 
-    input  cbus_req_t  [MAX_INDEX:0] ireqs,
-    output cbus_resp_t [MAX_INDEX:0] iresps,
+    input  cbus_req_t  ireqs [MAX_INDEX:0],
+    output cbus_resp_t iresps [MAX_INDEX:0],
     output cbus_req_t  oreq,
     input  cbus_resp_t oresp
 );
@@ -46,7 +46,9 @@ module CBusArbiter
 
     // feedback to selected request
     always_comb begin
-        iresps = '0;
+        for (int i = 0; i < NUM_INPUTS; i++) begin
+            iresps[i] = '0;
+        end
 
         if (busy) begin
             for (int i = 0; i < NUM_INPUTS; i++) begin

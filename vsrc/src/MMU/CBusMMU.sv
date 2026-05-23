@@ -27,12 +27,15 @@ module CBusMMU (
     input  PRIV_MODE   priv_mode
 );
 
-    typedef enum logic [2:0] {
+    typedef enum logic [3:0] {
         IDLE,
         PASSTHROUGH,
         WALK_L2,
+        RECV_L2,
         WALK_L1,
+        RECV_L1,
         WALK_L0,
+        RECV_L0,
         ACCESS
     } state_t;
 
@@ -79,9 +82,9 @@ module CBusMMU (
 
     always_comb begin
         unique case (state)
-            WALK_L2:  walk_addr = pte_addr(root_base, saved_request.addr[38:30]);
-            WALK_L1:  walk_addr = pte_addr(pte_base,  saved_request.addr[29:21]);
-            default:  walk_addr = pte_addr(pte_base,  saved_request.addr[20:12]);
+            WALK_L2, RECV_L2:  walk_addr = pte_addr(root_base, saved_request.addr[38:30]);
+            WALK_L1, RECV_L1:  walk_addr = pte_addr(pte_base,  saved_request.addr[29:21]);
+            default:           walk_addr = pte_addr(pte_base,  saved_request.addr[20:12]);
         endcase
     end
 
@@ -129,34 +132,43 @@ module CBusMMU (
                 end
                 WALK_L2: begin
                     if (downstream_done) begin
-                        pte <= downstream_response.data;
-                        if (is_leaf_pte(downstream_response.data)) begin
+                        pte   <= downstream_response.data;
+                        state <= RECV_L2;
+                    end
+                end
+                RECV_L2: begin
+                    if (is_leaf_pte(pte)) begin
                             leaf_level <= 2'd2;
                             state      <= ACCESS;
-                        end
-                        else begin
-                            state <= WALK_L1;
-                        end
+                    end
+                    else begin
+                        state <= WALK_L1;
                     end
                 end
                 WALK_L1: begin
                     if (downstream_done) begin
-                        pte <= downstream_response.data;
-                        if (is_leaf_pte(downstream_response.data)) begin
+                        pte   <= downstream_response.data;
+                        state <= RECV_L1;
+                    end
+                end
+                RECV_L1: begin
+                    if (is_leaf_pte(pte)) begin
                             leaf_level <= 2'd1;
                             state      <= ACCESS;
-                        end
-                        else begin
-                            state <= WALK_L0;
-                        end
+                    end
+                    else begin
+                        state <= WALK_L0;
                     end
                 end
                 WALK_L0: begin
                     if (downstream_done) begin
-                        pte        <= downstream_response.data;
-                        leaf_level <= 2'd0;
-                        state      <= ACCESS;
+                        pte   <= downstream_response.data;
+                        state <= RECV_L0;
                     end
+                end
+                RECV_L0: begin
+                    leaf_level <= 2'd0;
+                    state      <= ACCESS;
                 end
                 ACCESS: begin
                     if (downstream_done)

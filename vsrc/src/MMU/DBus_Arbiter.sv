@@ -25,6 +25,7 @@ module DBus_Arbiter (
     logic busy;
     logic index;   // 0 = MEM, 1 = IF fetch
     logic select;
+    dbus_req_t saved_request;
 
     always_comb begin
         select = 1'b0;
@@ -39,7 +40,7 @@ module DBus_Arbiter (
     always_comb begin
         dbus_request = '0;
         if (busy) begin
-            dbus_request = index ? fetch_request : mem_request;
+            dbus_request = saved_request;
         end
     end
 
@@ -59,17 +60,20 @@ module DBus_Arbiter (
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            busy  <= 1'b0;
-            index <= 1'b0;
+            busy          <= 1'b0;
+            index         <= 1'b0;
+            saved_request <= '0;
         end
         else if (busy) begin
             if (dbus_response.data_ok) begin
-                busy <= 1'b0;
+                busy          <= 1'b0;
+                saved_request <= '0;
             end
         end
         else begin
-            busy  <= mem_request.valid || fetch_request.valid;
-            index <= select;
+            busy          <= mem_request.valid || fetch_request.valid;
+            index         <= select;
+            saved_request <= select ? fetch_request : mem_request;
         end
     end
 

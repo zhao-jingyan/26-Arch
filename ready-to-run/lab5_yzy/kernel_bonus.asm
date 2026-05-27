@@ -1,5 +1,5 @@
 
-/tmp/r.elf:     file format elf64-littleriscv
+/home/wib/arch_2026/26-Arch/ready-to-run/lab5/bonus_test.elf:     file format elf64-littleriscv
 
 
 Disassembly of section .text:
@@ -18,7 +18,7 @@ Disassembly of section .text:
     80000028:	01929293          	slli	t0,t0,0x19
     8000002c:	00c2d293          	srli	t0,t0,0xc
     80000030:	00a29293          	slli	t0,t0,0xa
-    80000034:	0df00313          	li	t1,223
+    80000034:	0cf00313          	li	t1,207
     80000038:	0062e2b3          	or	t0,t0,t1
     8000003c:	00040337          	lui	t1,0x40
     80000040:	0813031b          	addiw	t1,t1,129
@@ -38,7 +38,7 @@ Disassembly of section .text:
     80000078:	01929293          	slli	t0,t0,0x19
     8000007c:	0152d293          	srli	t0,t0,0x15
     80000080:	01329293          	slli	t0,t0,0x13
-    80000084:	0df00313          	li	t1,223
+    80000084:	0cf00313          	li	t1,207
     80000088:	0062e2b3          	or	t0,t0,t1
     8000008c:	00080337          	lui	t1,0x80
     80000090:	1013031b          	addiw	t1,t1,257
@@ -111,7 +111,7 @@ Disassembly of section .text:
     8000019c:	019e1e13          	slli	t3,t3,0x19
     800001a0:	015e5e13          	srli	t3,t3,0x15
     800001a4:	013e1e13          	slli	t3,t3,0x13
-    800001a8:	0df00e93          	li	t4,223
+    800001a8:	0cf00e93          	li	t4,207
     800001ac:	01de6e33          	or	t3,t3,t4
     800001b0:	41c38f33          	sub	t5,t2,t3
     800001b4:	000f0c63          	beqz	t5,800001cc <_bonus_start+0x1cc>
@@ -183,8 +183,8 @@ Disassembly of section .text:
     800002a4:	406005b7          	lui	a1,0x40600
     800002a8:	0045859b          	addiw	a1,a1,4
     800002ac:	00a58023          	sb	a0,0(a1) # 40600000 <MAGIC+0x2e2ba988>
-    800002b0:	0005006b          	0x5006b
-    800002b4:	0000006f          	j	800002b4 <u_ret+0x14>
+    800002b0:	00000513          	li	a0,0
+    800002b4:	0005006b          	0x5006b
 
 00000000800002b8 <s_trap>:
     800002b8:	142022f3          	csrr	t0,scause

@@ -23,6 +23,7 @@ module IF_Stage (
 
     output IF_2_ID     if_2_id,
     output IF_2_CTRL   if_2_ctrl,
+    output u64         if_pc,
 
     output dbus_req_t  dbus_request,
     input  dbus_resp_t dbus_response
@@ -36,6 +37,7 @@ module IF_Stage (
     // 未取到指令时也要冻结 PC
     assign pc_stall = stall || !is_inst_ready;
     assign if_2_ctrl.is_inst_ready = is_inst_ready;
+    assign if_pc    = pc_inst_address_cur;
 
     PC u_pc (
         .clk              ( clk ),

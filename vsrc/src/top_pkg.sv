@@ -47,7 +47,7 @@ package top_pkg;
         logic is_ecall;
         logic is_mret;
         logic exc_valid;
-        logic [3:0] exc_cause;
+        u64   exc_cause;
         u64   exc_tval;
     } TRAP_CTX;
 

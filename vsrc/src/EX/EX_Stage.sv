@@ -11,11 +11,13 @@
 `include "src/EX/ALU_Core.sv"
 `include "src/EX/Branch_Unit.sv"
 `include "src/EX/PC_Target.sv"
+`include "src/ID/CSR_PKG.sv"
 `endif
 
 import common::*;
 import top_pkg::*;
 import ID_PKG::*;
+import CSR_PKG::*;
 
 module EX_Stage (
     input  logic     clk,
@@ -104,12 +106,16 @@ module EX_Stage (
         endcase
     end
 
+    // JALR 目标未对齐：记异常且禁止跳转
+    logic jalr_misalign;
+    assign jalr_misalign = (id_2_ex.jump_type == JT_JALR) && (jump_target[1:0] != 2'b00);
+
     // 跳转判定组合直出
     // JT_CSR 走"永远预测失败"语义，无条件拉高让 Control_Unit 触发 flush + PC 重定向到 pc+4
     always_comb begin
         unique case (id_2_ex.jump_type)
             JT_JAL:  pc_should_jump = 1'b1;
-            JT_JALR: pc_should_jump = 1'b1;
+            JT_JALR: pc_should_jump = !jalr_misalign;
             JT_BR:   pc_should_jump = is_branch_taken;
             JT_CSR:  pc_should_jump = 1'b1;
             default: pc_should_jump = 1'b0;
@@ -132,7 +138,15 @@ module EX_Stage (
             csr_write_out <= '0;
         end else if (!stall) begin
             inst_ctx_out        <= inst_ctx_in;
-            trap_ctx_out        <= trap_ctx_in;
+            if (jalr_misalign) begin
+                trap_ctx_out.exc_valid <= 1'b1;
+                trap_ctx_out.exc_cause <= MCAUSE_INSTR_MISALIGN;
+                trap_ctx_out.exc_tval  <= jump_target;
+                trap_ctx_out.is_ecall  <= trap_ctx_in.is_ecall;
+                trap_ctx_out.is_mret   <= trap_ctx_in.is_mret;
+            end else begin
+                trap_ctx_out        <= trap_ctx_in;
+            end
             ex_2_mem.ex_result  <= ex_result;
             ex_2_mem.rs2_data   <= fwd_2_ex.rs2_data;
             csr_write_out       <= csr_write_in;

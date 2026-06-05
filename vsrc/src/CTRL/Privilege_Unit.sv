@@ -17,12 +17,14 @@ module Privilege_Unit (
     input  logic         rst_n,
 
     input  WB_TRAP_EVENT wb_trap_event,
+    input  logic         int_fire,
+    input  u64           int_mcause,
+    input  u64           int_epc,
     input  u64           mstatus,
     input  u64           mcause,
     input  u64           mtval,
     input  u64           mtvec_value,
     input  u64           mepc_value,
-    input  logic         interrupt_pending,
 
     output logic         trap_write_en,
     output u64           trap_mstatus_next,
@@ -39,16 +41,19 @@ module Privilege_Unit (
     u64       trap_mstatus_w;
     u64       mret_mstatus_w;
 
-    assign priv_mode = priv_mode_q;
-    assign mstatus_mpp = PRIV_MODE'(mstatus_get_mpp(mstatus));
-
+    logic is_wb_trap_fire;
     logic is_trap_fire;
     logic is_mret_fire;
 
-    assign is_trap_fire = wb_trap_event.is_trap_commit
-                        && (wb_trap_event.trap_ctx.is_ecall || wb_trap_event.trap_ctx.exc_valid);
+    assign priv_mode = priv_mode_q;
+    assign mstatus_mpp = PRIV_MODE'(mstatus_get_mpp(mstatus));
+
+    assign is_wb_trap_fire = wb_trap_event.is_trap_commit
+                          && (wb_trap_event.trap_ctx.is_ecall
+                           || wb_trap_event.trap_ctx.exc_valid);
+    assign is_trap_fire = int_fire || is_wb_trap_fire;
     assign is_mret_fire = wb_trap_event.is_trap_commit
-                        && wb_trap_event.trap_ctx.is_mret;
+                       && wb_trap_event.trap_ctx.is_mret;
 
     always_comb begin
         trap_mstatus_w = mstatus;
@@ -60,6 +65,7 @@ module Privilege_Unit (
         mret_mstatus_w = mstatus_set_mie(mret_mstatus_w, mstatus_get_mpie(mstatus));
         mret_mstatus_w = mstatus_set_mpie(mret_mstatus_w, 1'b1);
         mret_mstatus_w = mstatus_set_mpp(mret_mstatus_w, PRIV_U);
+        mret_mstatus_w = mstatus_set_xs(mret_mstatus_w, 2'b00);
         if (mstatus_mpp != PRIV_M)
             mret_mstatus_w = mstatus_set_mprv(mret_mstatus_w, 1'b0);
     end
@@ -73,11 +79,14 @@ module Privilege_Unit (
 
         if (is_trap_fire) begin
             trap_mstatus_next = trap_mstatus_w;
-            trap_mepc_next    = wb_trap_event.epc;
-            trap_mcause_next  = wb_trap_event.trap_ctx.exc_valid
-                              ? {60'b0, wb_trap_event.trap_ctx.exc_cause}
-                              : ((priv_mode_q == PRIV_M) ? MCAUSE_ECALL_M : MCAUSE_ECALL_U);
-            trap_mtval_next   = wb_trap_event.trap_ctx.exc_tval;
+            trap_mcause_next  = int_fire ? int_mcause
+                                         : (wb_trap_event.trap_ctx.exc_valid
+                                            ? wb_trap_event.trap_ctx.exc_cause
+                                            : ((priv_mode_q == PRIV_M)
+                                               ? MCAUSE_ECALL_M
+                                               : MCAUSE_ECALL_U));
+            trap_mtval_next   = int_fire ? 64'b0 : wb_trap_event.trap_ctx.exc_tval;
+            trap_mepc_next    = int_fire ? int_epc : wb_trap_event.epc;
         end
         else if (is_mret_fire) begin
             trap_mstatus_next = mret_mstatus_w;
@@ -93,7 +102,7 @@ module Privilege_Unit (
         if (!rst_n) begin
             priv_mode_q <= PRIV_M;
         end
-        else if (is_trap_fire || interrupt_pending) begin
+        else if (is_trap_fire) begin
             priv_mode_q <= PRIV_M;
         end
         else if (is_mret_fire) begin

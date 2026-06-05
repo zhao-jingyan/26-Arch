@@ -16,6 +16,7 @@
 `include "src/CTRL/Control_Unit.sv"
 `include "src/CTRL/Forward_Unit.sv"
 `include "src/CTRL/Privilege_Unit.sv"
+`include "src/CTRL/Interrupt_Unit.sv"
 `endif
 
 import common::*;
@@ -25,6 +26,10 @@ import ID_PKG::*;
 module Top (
     input  logic       clk,
     input  logic       rst_n,
+
+    input  logic       trint,
+    input  logic       swint,
+    input  logic       exint,
 
     output ibus_req_t  ibus_req_o,
     input  ibus_resp_t ibus_resp_i,
@@ -88,6 +93,13 @@ module Top (
     u64         trap_mtval_next;
     u64         mtvec_value;
     u64         mepc_value;
+    u64         if_pc;
+    u64         mip_hw;
+    u64         mip_sw;
+    logic       int_fire;
+    u64         int_mcause;
+    u64         int_epc;
+    logic       kill_new_req;
 
     // EX / MEM 对控制层的裸端口反馈
     logic ex_pc_should_jump;
@@ -141,17 +153,47 @@ module Top (
         .pc_jump_address    ( pc_jump_address )
     );
 
+    Interrupt_Unit u_int (
+        .clk        ( clk ),
+        .rst_n      ( rst_n ),
+
+        .trint      ( trint ),
+        .swint      ( swint ),
+        .exint      ( exint ),
+
+        .mstatus    ( csr_state_o.mstatus ),
+        .mip_sw     ( mip_sw ),
+        .mie        ( csr_state_o.mie ),
+        .priv_mode  ( priv_mode_o ),
+        .if_pc      ( if_pc ),
+        .if_2_id    ( if_2_id ),
+        .ex_inst_ctx( ex_inst_ctx ),
+        .mem_inst_ctx( mem_inst_ctx ),
+
+        .trap_write_en      ( trap_write_en ),
+        .trap_mstatus_next  ( trap_mstatus_next ),
+        .wb_csr_write       ( wb_2_csr ),
+        .wb_commit_valid    ( wb_commit_valid ),
+
+        .mip_hw     ( mip_hw ),
+        .int_fire   ( int_fire ),
+        .int_mcause ( int_mcause ),
+        .int_epc    ( int_epc )
+    );
+
     Privilege_Unit u_priv (
         .clk                 ( clk ),
         .rst_n               ( rst_n ),
 
         .wb_trap_event       ( wb_trap_event ),
+        .int_fire            ( int_fire ),
+        .int_mcause          ( int_mcause ),
+        .int_epc             ( int_epc ),
         .mstatus             ( csr_state_o.mstatus ),
         .mcause              ( csr_state_o.mcause ),
         .mtval               ( csr_state_o.mtval ),
         .mtvec_value         ( mtvec_value ),
         .mepc_value          ( mepc_value ),
-        .interrupt_pending   ( 1'b0 ),
 
         .trap_write_en       ( trap_write_en ),
         .trap_mstatus_next   ( trap_mstatus_next ),
@@ -172,6 +214,7 @@ module Top (
             mmu_priv_mode = priv_mode_o;
     end
     assign mmu_priv_mode_o = mmu_priv_mode;
+    assign kill_new_req    = priv_2_ctrl.is_trap_fire || priv_2_ctrl.is_mret_fire;
 
     IF_Stage u_if (
         .clk             ( clk ),
@@ -184,6 +227,7 @@ module Top (
 
         .if_2_id         ( if_2_id ),
         .if_2_ctrl       ( if_2_ctrl ),
+        .if_pc           ( if_pc ),
 
         .dbus_request    ( if_dbus_req ),
         .dbus_response   ( if_dbus_resp )
@@ -203,8 +247,10 @@ module Top (
         .trap_mepc_next    ( trap_mepc_next ),
         .trap_mcause_next  ( trap_mcause_next ),
         .trap_mtval_next   ( trap_mtval_next ),
+        .mip_hw            ( mip_hw ),
 
         .inst_ctx      ( id_inst_ctx ),
+        .mip_sw        ( mip_sw ),
         .trap_ctx      ( id_trap_ctx ),
         .id_2_ex       ( id_2_ex ),
         .id_2_fwd      ( id_2_fwd ),
@@ -251,6 +297,7 @@ module Top (
         .trap_ctx_in   ( ex_trap_ctx ),
         .ex_2_mem      ( ex_2_mem ),
         .csr_write_in  ( ex_csr_write ),
+        .kill_new_req  ( kill_new_req ),
 
         .inst_ctx_out  ( mem_inst_ctx ),
         .trap_ctx_out  ( mem_trap_ctx ),

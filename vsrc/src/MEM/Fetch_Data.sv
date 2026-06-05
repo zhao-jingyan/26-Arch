@@ -20,6 +20,7 @@ module Fetch_Data (
     input  logic       is_load,
     input  logic       is_store,
     input  u64         store_data,
+    input  logic       kill_new_req,
 
     output u64         load_data,
     output logic       is_mem_ready,
@@ -115,7 +116,7 @@ module Fetch_Data (
                        && (latched_inst == inst);
 
     assign is_mem_ready  = !pending_valid && (!is_mem || is_same_inst);
-    assign request_valid = pending_valid || (is_mem && !is_mem_ready);
+    assign request_valid = !kill_new_req && (pending_valid || (is_mem && !is_mem_ready));
     assign data_byte_idx = pending_valid ? pending_byte_idx : byte_idx;
     assign data_funct3   = pending_valid ? pending_funct3   : funct3;
     assign load_data     = is_same_inst ? latched_data : load_data_ext;
@@ -134,30 +135,28 @@ module Fetch_Data (
             pending_funct3 <= '0;
             pending_byte_idx <= '0;
         end
-        // 本拍响应回来（且尚未 latch）→ 覆盖式 latch 当前 pc/inst/data
-        // 同时也覆盖了「上一条 mem 指令离开后 latch 残留」的清理需求
-        else if (is_response_valid && !is_mem_ready) begin
-            latched_pc    <= pc_inst_address;
-            latched_inst  <= inst;
-            latched_data  <= load_data_ext;  // store 不使用此字段
-            latched_valid <= 1'b1;
-            pending_valid <= 1'b0;
-        end
-        // 访存请求一旦发出，在响应回来前保持请求内容稳定。
-        else if (!pending_valid && is_mem && !is_mem_ready) begin
-            pending_valid    <= 1'b1;
-            pending_addr     <= mem_addr;
-            pending_size     <= req_size;
-            pending_strobe   <= req_strobe;
-            pending_wdata    <= req_wdata;
-            pending_funct3   <= funct3;
-            pending_byte_idx <= byte_idx;
-        end
-        // 持 latch 的指令已离开 MEM（本拍 pc/inst 与 latch 不同）→ 让 latch 失效
-        // 防止循环中同 PC 再次进入时误命中陈旧 latched_data
-        else if (latched_valid
-                 && ((latched_pc != pc_inst_address) || (latched_inst != inst))) begin
-            latched_valid <= 1'b0;
+        else begin
+            // 响应与 kill 可同拍：独立处理，避免 pending_valid 残留死锁
+            if (is_response_valid && !is_mem_ready) begin
+                latched_pc    <= pc_inst_address;
+                latched_inst  <= inst;
+                latched_data  <= load_data_ext;
+                latched_valid <= 1'b1;
+                pending_valid <= 1'b0;
+            end
+            if (!kill_new_req && !pending_valid && is_mem && !is_mem_ready) begin
+                pending_valid    <= 1'b1;
+                pending_addr     <= mem_addr;
+                pending_size     <= req_size;
+                pending_strobe   <= req_strobe;
+                pending_wdata    <= req_wdata;
+                pending_funct3   <= funct3;
+                pending_byte_idx <= byte_idx;
+            end
+            if (latched_valid
+                && ((latched_pc != pc_inst_address) || (latched_inst != inst))) begin
+                latched_valid <= 1'b0;
+            end
         end
     end
 

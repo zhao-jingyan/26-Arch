@@ -40,9 +40,20 @@ package CSR_PKG;
     localparam logic [11:0] CSR_MHARTID  = 12'hf14;
     localparam logic [11:0] CSR_SATP     = 12'h180;
 
-    // mcause 编码
-    localparam logic [63:0] MCAUSE_ECALL_U = 64'd8;
-    localparam logic [63:0] MCAUSE_ECALL_M = 64'd11;
+    // mcause 异常编码（bit63=0）
+    localparam logic [63:0] MCAUSE_INSTR_MISALIGN = 64'd0;
+    localparam logic [63:0] MCAUSE_ILLEGAL_INST  = 64'd2;
+    localparam logic [63:0] MCAUSE_LOAD_MISALIGN = 64'd4;
+    localparam logic [63:0] MCAUSE_STORE_MISALIGN = 64'd6;
+    localparam logic [63:0] MCAUSE_ECALL_U       = 64'd8;
+    localparam logic [63:0] MCAUSE_ECALL_M       = 64'd11;
+
+    // mcause 中断编码（bit63=1）
+    localparam logic [63:0] MCAUSE_MSI = 64'h8000_0000_0000_0003;
+    localparam logic [63:0] MCAUSE_MTI = 64'h8000_0000_0000_0007;
+    localparam logic [63:0] MCAUSE_MEI = 64'h8000_0000_0000_000b;
+
+    localparam int MSTATUS_XS_LSB = 15;
 
     // mstatus 字段位置
     localparam int MSTATUS_MIE_BIT  = 3;
@@ -88,6 +99,11 @@ package CSR_PKG;
 
     function automatic logic [1:0] mstatus_get_mpp(input logic [63:0] value);
         mstatus_get_mpp = value[MSTATUS_MPP_LSB +: 2];
+    endfunction
+
+    function automatic logic [63:0] mstatus_set_xs(input logic [63:0] value, input logic [1:0] xs);
+        mstatus_set_xs = value;
+        mstatus_set_xs[MSTATUS_XS_LSB +: 2] = xs;
     endfunction
 endpackage
 

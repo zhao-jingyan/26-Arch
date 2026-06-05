@@ -36,9 +36,11 @@ module CSRFile (
     input  u64       trap_mepc_next,
     input  u64       trap_mcause_next,
     input  u64       trap_mtval_next,
+    input  u64       mip_hw,
 
     // CSRFile 快照：DifftestCSRState 字段表内的 9 个 CSR；mcycle / mhartid 不在内
     output CSR_STATE csr_state,
+    output u64       mip_sw,
     output u64       mtvec_value,
     output u64       mepc_value
 );
@@ -75,7 +77,7 @@ module CSRFile (
         unique case (read_addr)
             CSR_MSTATUS:  reg_value = mstatus;
             CSR_MTVEC:    reg_value = mtvec;
-            CSR_MIP:      reg_value = mip;
+            CSR_MIP:      reg_value = mip | mip_hw;
             CSR_MIE:      reg_value = mie;
             CSR_MSCRATCH: reg_value = mscratch;
             CSR_MCAUSE:   reg_value = mcause;
@@ -152,7 +154,8 @@ module CSRFile (
     // CSRFile 快照：直出当前寄存器值，供 Difftest 比对
     assign csr_state.mstatus  = mstatus;
     assign csr_state.mtvec    = mtvec;
-    assign csr_state.mip      = mip;
+    assign mip_sw             = mip;
+    assign csr_state.mip      = mip | mip_hw;
     assign csr_state.mie      = mie;
     assign csr_state.mscratch = mscratch;
     assign csr_state.mcause   = mcause;

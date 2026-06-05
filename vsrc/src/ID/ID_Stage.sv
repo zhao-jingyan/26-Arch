@@ -31,8 +31,10 @@ module ID_Stage (
     input  u64       trap_mepc_next,
     input  u64       trap_mcause_next,
     input  u64       trap_mtval_next,
+    input  u64       mip_hw,
 
     output INST_CTX  inst_ctx,
+    output u64       mip_sw,
     output TRAP_CTX  trap_ctx,
     output ID_2_EX   id_2_ex,
     output ID_2_FWD  id_2_fwd,
@@ -61,6 +63,7 @@ module ID_Stage (
     logic       dec_is_csr_imm;
     logic       dec_is_ecall;
     logic       dec_is_mret;
+    logic       dec_is_illegal;
     CSR_OP      dec_csr_op;
     u12         dec_csr_addr;
     u5          dec_csr_uimm;
@@ -104,7 +107,8 @@ module ID_Stage (
         .csr_uimm      ( dec_csr_uimm ),
 
         .is_ecall      ( dec_is_ecall ),
-        .is_mret       ( dec_is_mret )
+        .is_mret       ( dec_is_mret ),
+        .is_illegal    ( dec_is_illegal )
     );
 
     RegFile u_regfile (
@@ -149,8 +153,10 @@ module ID_Stage (
         .trap_mepc_next    ( trap_mepc_next ),
         .trap_mcause_next  ( trap_mcause_next ),
         .trap_mtval_next   ( trap_mtval_next ),
+        .mip_hw            ( mip_hw ),
 
         .csr_state   ( csr_state ),
+        .mip_sw      ( mip_sw ),
         .mtvec_value ( mtvec_value ),
         .mepc_value  ( mepc_value )
     );
@@ -208,9 +214,19 @@ module ID_Stage (
 
             trap_ctx.is_ecall  <= dec_is_ecall;
             trap_ctx.is_mret   <= dec_is_mret;
-            trap_ctx.exc_valid <= 1'b0;
-            trap_ctx.exc_cause <= 4'b0;
-            trap_ctx.exc_tval  <= 64'b0;
+            if (dec_is_illegal) begin
+                trap_ctx.exc_valid <= 1'b1;
+                trap_ctx.exc_cause <= MCAUSE_ILLEGAL_INST;
+                trap_ctx.exc_tval  <= {32'b0, if_2_id.inst};
+            end else if (if_2_id.pc_inst_address[1:0] != 2'b00) begin
+                trap_ctx.exc_valid <= 1'b1;
+                trap_ctx.exc_cause <= MCAUSE_INSTR_MISALIGN;
+                trap_ctx.exc_tval  <= if_2_id.pc_inst_address;
+            end else begin
+                trap_ctx.exc_valid <= 1'b0;
+                trap_ctx.exc_cause <= 64'b0;
+                trap_ctx.exc_tval  <= 64'b0;
+            end
 
             id_2_ex.imm           <= se_imm;
             id_2_ex.csr_old       <= csr_read_data;  // CSR 旧值，EX 在 RD_FROM_CSR 时选它

@@ -8,11 +8,13 @@
 `include "src/top_pkg.sv"
 `include "src/ID/ID_PKG.sv"
 `include "src/MEM/Fetch_Data.sv"
+`include "src/ID/CSR_PKG.sv"
 `endif
 
 import common::*;
 import top_pkg::*;
 import ID_PKG::*;
+import CSR_PKG::*;
 
 module MEM_Stage (
     input  logic       clk,
@@ -25,6 +27,7 @@ module MEM_Stage (
     input  TRAP_CTX    trap_ctx_in,
     input  EX_2_MEM    ex_2_mem,
     input  CSR_WRITE   csr_write_in,
+    input  logic       kill_new_req,
 
     output INST_CTX    inst_ctx_out,
     output TRAP_CTX    trap_ctx_out,
@@ -42,10 +45,50 @@ module MEM_Stage (
     logic is_load;
     logic is_store;
     u3    funct3;
+    logic load_misalign;
+    logic store_misalign;
+    logic is_mem_exc;
+    TRAP_CTX trap_ctx_next;
 
     assign is_load  = (inst_ctx_in.opcode == OP_LOAD);
     assign is_store = (inst_ctx_in.opcode == OP_STORE);
     assign funct3   = inst_ctx_in.inst[14:12];
+
+    always_comb begin
+        load_misalign  = 1'b0;
+        store_misalign = 1'b0;
+        if (is_load) begin
+            unique case (funct3)
+                3'b001: load_misalign = ex_2_mem.ex_result[0];
+                3'b010: load_misalign = |ex_2_mem.ex_result[1:0];
+                3'b011: load_misalign = |ex_2_mem.ex_result[2:0];
+                default: load_misalign = 1'b0;
+            endcase
+        end
+        if (is_store) begin
+            unique case (funct3)
+                3'b001: store_misalign = ex_2_mem.ex_result[0];
+                3'b010: store_misalign = |ex_2_mem.ex_result[1:0];
+                3'b011: store_misalign = |ex_2_mem.ex_result[2:0];
+                default: store_misalign = 1'b0;
+            endcase
+        end
+    end
+
+    always_comb begin
+        trap_ctx_next = trap_ctx_in;
+        if (load_misalign) begin
+            trap_ctx_next.exc_valid = 1'b1;
+            trap_ctx_next.exc_cause = MCAUSE_LOAD_MISALIGN;
+            trap_ctx_next.exc_tval  = ex_2_mem.ex_result;
+        end else if (store_misalign) begin
+            trap_ctx_next.exc_valid = 1'b1;
+            trap_ctx_next.exc_cause = MCAUSE_STORE_MISALIGN;
+            trap_ctx_next.exc_tval  = ex_2_mem.ex_result;
+        end
+    end
+
+    assign is_mem_exc = trap_ctx_next.exc_valid;
 
     u64 load_data;
 
@@ -57,9 +100,10 @@ module MEM_Stage (
         .inst            ( inst_ctx_in.inst ),
         .mem_addr        ( ex_2_mem.ex_result ),
         .funct3          ( funct3 ),
-        .is_load         ( is_load ),
-        .is_store        ( is_store ),
+        .is_load         ( is_load && !is_mem_exc ),
+        .is_store        ( is_store && !is_mem_exc ),
         .store_data      ( ex_2_mem.rs2_data ),
+        .kill_new_req    ( kill_new_req ),
 
         .load_data       ( load_data ),
         .is_mem_ready    ( is_mem_ready ),
@@ -89,7 +133,7 @@ module MEM_Stage (
         end
         else if (!stall && is_mem_ready) begin
             inst_ctx_out      <= inst_ctx_in;
-            trap_ctx_out      <= trap_ctx_in;
+            trap_ctx_out      <= trap_ctx_next;
             mem_2_wb.rd_data  <= rd_data;
             mem_2_wb.mem_addr <= ex_2_mem.ex_result;  // 供 commit 层做 Difftest skip 判定
             csr_write_out     <= csr_write_in;

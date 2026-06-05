@@ -37,6 +37,9 @@ module core import common::*; import top_pkg::*; (
 	Top u_top (
 		.clk            ( clk ),
 		.rst_n          ( rst_n ),
+		.trint          ( trint ),
+		.swint          ( swint ),
+		.exint          ( exint ),
 		.ibus_req_o     ( ireq ),
 		.ibus_resp_i    ( iresp ),
 		.dbus_req_o     ( dreq ),

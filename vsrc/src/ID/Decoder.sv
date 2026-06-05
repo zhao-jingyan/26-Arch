@@ -40,12 +40,14 @@ module Decoder (
     output u5          csr_uimm,      // 5-bit zero-extended uimm = inst[19:15]
 
     output logic       is_ecall,
-    output logic       is_mret
+    output logic       is_mret,
+    output logic       is_illegal
 );
 
     u3  funct3;
     u7  funct7;
     u7  opcode_w;
+    logic is_decoded;
 
     assign opcode_w = inst[6:0];
     assign funct3   = inst[14:12];
@@ -75,20 +77,21 @@ module Decoder (
         csr_op        = CSR_NONE;
         is_ecall      = 1'b0;
         is_mret       = 1'b0;
+        is_decoded    = 1'b0;
 
         unique case (opcode_w)
             OP_IMM: begin
                 alu_inst_type = NORM;
                 is_op2_imm    = 1'b1;
                 unique case (funct3)
-                    3'b000: alu_op_code = ADD;                          // addi
-                    3'b100: alu_op_code = XOR;                          // xori
-                    3'b110: alu_op_code = OR;                           // ori
-                    3'b111: alu_op_code = AND;                          // andi
-                    3'b010: alu_op_code = SLT;                          // slti
-                    3'b011: alu_op_code = SLTU;                         // sltiu
-                    3'b001: alu_op_code = SLL;                          // slli
-                    3'b101: alu_op_code = funct7[5] ? SRA : SRL;        // srai / srli
+                    3'b000: begin alu_op_code = ADD; is_decoded = 1'b1; end
+                    3'b100: begin alu_op_code = XOR; is_decoded = 1'b1; end
+                    3'b110: begin alu_op_code = OR;  is_decoded = 1'b1; end
+                    3'b111: begin alu_op_code = AND; is_decoded = 1'b1; end
+                    3'b010: begin alu_op_code = SLT; is_decoded = 1'b1; end
+                    3'b011: begin alu_op_code = SLTU; is_decoded = 1'b1; end
+                    3'b001: begin alu_op_code = SLL; is_decoded = 1'b1; end
+                    3'b101: begin alu_op_code = funct7[5] ? SRA : SRL; is_decoded = 1'b1; end
                     default: ;
                 endcase
             end
@@ -98,24 +101,24 @@ module Decoder (
                 if (funct7 == FUNCT7_M) begin
                     // RV64M：MUL/MULH/MULHSU/MULHU/DIV/DIVU/REM/REMU
                     unique case (funct3)
-                        3'b000: alu_op_code = MUL;                      // mul
-                        3'b100: alu_op_code = DIV;                      // div
-                        3'b101: alu_op_code = DIVU;                     // divu
-                        3'b110: alu_op_code = REM;                      // rem
-                        3'b111: alu_op_code = REMU;                     // remu
+                        3'b000: begin alu_op_code = MUL;  is_decoded = 1'b1; end
+                        3'b100: begin alu_op_code = DIV;  is_decoded = 1'b1; end
+                        3'b101: begin alu_op_code = DIVU; is_decoded = 1'b1; end
+                        3'b110: begin alu_op_code = REM;  is_decoded = 1'b1; end
+                        3'b111: begin alu_op_code = REMU; is_decoded = 1'b1; end
                         default: ;
                     endcase
                 end
                 else begin
                     unique case (funct3)
-                        3'b000: alu_op_code = funct7[5] ? SUB : ADD;    // sub / add
-                        3'b100: alu_op_code = XOR;                      // xor
-                        3'b110: alu_op_code = OR;                       // or
-                        3'b111: alu_op_code = AND;                      // and
-                        3'b010: alu_op_code = SLT;                      // slt
-                        3'b011: alu_op_code = SLTU;                     // sltu
-                        3'b001: alu_op_code = SLL;                      // sll
-                        3'b101: alu_op_code = funct7[5] ? SRA : SRL;    // sra / srl
+                        3'b000: begin alu_op_code = funct7[5] ? SUB : ADD; is_decoded = 1'b1; end
+                        3'b100: begin alu_op_code = XOR; is_decoded = 1'b1; end
+                        3'b110: begin alu_op_code = OR;  is_decoded = 1'b1; end
+                        3'b111: begin alu_op_code = AND; is_decoded = 1'b1; end
+                        3'b010: begin alu_op_code = SLT; is_decoded = 1'b1; end
+                        3'b011: begin alu_op_code = SLTU; is_decoded = 1'b1; end
+                        3'b001: begin alu_op_code = SLL; is_decoded = 1'b1; end
+                        3'b101: begin alu_op_code = funct7[5] ? SRA : SRL; is_decoded = 1'b1; end
                         default: ;
                     endcase
                 end
@@ -125,9 +128,9 @@ module Decoder (
                 alu_inst_type = WORD;
                 is_op2_imm    = 1'b1;
                 unique case (funct3)
-                    3'b000: alu_op_code = ADD;                          // addiw
-                    3'b001: alu_op_code = SLL;                          // slliw
-                    3'b101: alu_op_code = funct7[5] ? SRA : SRL;        // sraiw / srliw
+                    3'b000: begin alu_op_code = ADD; is_decoded = 1'b1; end
+                    3'b001: begin alu_op_code = SLL; is_decoded = 1'b1; end
+                    3'b101: begin alu_op_code = funct7[5] ? SRA : SRL; is_decoded = 1'b1; end
                     default: ;
                 endcase
             end
@@ -137,19 +140,19 @@ module Decoder (
                 if (funct7 == FUNCT7_M) begin
                     // RV64M 字版本：MULW/DIVW/DIVUW/REMW/REMUW
                     unique case (funct3)
-                        3'b000: alu_op_code = MUL;                      // mulw
-                        3'b100: alu_op_code = DIV;                      // divw
-                        3'b101: alu_op_code = DIVU;                     // divuw
-                        3'b110: alu_op_code = REM;                      // remw
-                        3'b111: alu_op_code = REMU;                     // remuw
+                        3'b000: begin alu_op_code = MUL;  is_decoded = 1'b1; end
+                        3'b100: begin alu_op_code = DIV;  is_decoded = 1'b1; end
+                        3'b101: begin alu_op_code = DIVU; is_decoded = 1'b1; end
+                        3'b110: begin alu_op_code = REM;  is_decoded = 1'b1; end
+                        3'b111: begin alu_op_code = REMU; is_decoded = 1'b1; end
                         default: ;
                     endcase
                 end
                 else begin
                     unique case (funct3)
-                        3'b000: alu_op_code = funct7[5] ? SUB : ADD;    // subw / addw
-                        3'b001: alu_op_code = SLL;                      // sllw
-                        3'b101: alu_op_code = funct7[5] ? SRA : SRL;    // sraw / srlw
+                        3'b000: begin alu_op_code = funct7[5] ? SUB : ADD; is_decoded = 1'b1; end
+                        3'b001: begin alu_op_code = SLL; is_decoded = 1'b1; end
+                        3'b101: begin alu_op_code = funct7[5] ? SRA : SRL; is_decoded = 1'b1; end
                         default: ;
                     endcase
                 end
@@ -157,52 +160,58 @@ module Decoder (
 
             OP_LOAD: begin
                 alu_inst_type = NORM;
-                alu_op_code   = ADD;    // 地址 = rs1 + imm
+                alu_op_code   = ADD;
                 is_op2_imm    = 1'b1;
+                is_decoded    = 1'b1;
             end
 
             OP_STORE: begin
                 alu_inst_type = NORM;
-                alu_op_code   = ADD;    // 地址 = rs1 + imm
+                alu_op_code   = ADD;
                 is_op2_imm    = 1'b1;
+                is_decoded    = 1'b1;
             end
 
             OP_LUI: begin
                 alu_inst_type = NORM;
-                alu_op_code   = ADD;    // rd = 0 + imm
+                alu_op_code   = ADD;
                 is_op1_zero   = 1'b1;
                 is_op2_imm    = 1'b1;
+                is_decoded    = 1'b1;
             end
 
             OP_AUIPC: begin
                 alu_inst_type = NORM;
-                alu_op_code   = ADD;    // rd = PC + imm
+                alu_op_code   = ADD;
                 is_op1_pc     = 1'b1;
                 is_op2_imm    = 1'b1;
+                is_decoded    = 1'b1;
             end
 
             OP_BRANCH: begin
                 jump_type = JT_BR;
                 unique case (funct3)
-                    3'b000: branch_op = BR_EQ;
-                    3'b001: branch_op = BR_NE;
-                    3'b100: branch_op = BR_LT;
-                    3'b101: branch_op = BR_GE;
-                    3'b110: branch_op = BR_LTU;
-                    3'b111: branch_op = BR_GEU;
+                    3'b000: begin branch_op = BR_EQ;  is_decoded = 1'b1; end
+                    3'b001: begin branch_op = BR_NE;  is_decoded = 1'b1; end
+                    3'b100: begin branch_op = BR_LT;  is_decoded = 1'b1; end
+                    3'b101: begin branch_op = BR_GE;  is_decoded = 1'b1; end
+                    3'b110: begin branch_op = BR_LTU; is_decoded = 1'b1; end
+                    3'b111: begin branch_op = BR_GEU; is_decoded = 1'b1; end
                     default: branch_op = BR_NONE;
                 endcase
             end
 
             OP_JAL: begin
-                jump_type = JT_JAL;
-                rd_src    = RD_FROM_PC_PLUS_4;
+                jump_type  = JT_JAL;
+                rd_src     = RD_FROM_PC_PLUS_4;
+                is_decoded = 1'b1;
             end
 
             OP_JALR: begin
                 jump_type  = JT_JALR;
                 rd_src     = RD_FROM_PC_PLUS_4;
-                is_op2_imm = 1'b1;  // PC_Target 用 rs1+imm，与 ALU 无关
+                is_op2_imm = 1'b1;
+                is_decoded = 1'b1;
             end
 
             OP_SYSTEM: begin
@@ -213,20 +222,25 @@ module Decoder (
                 unique case (funct3)
                     3'b000: begin
                         unique case (inst[31:20])
-                            FUNCT12_ECALL: is_ecall = 1'b1;
-                            FUNCT12_MRET:  is_mret  = 1'b1;
-                            default: ;
+                            FUNCT12_ECALL: begin is_ecall = 1'b1; is_decoded = 1'b1; end
+                            FUNCT12_MRET:  begin is_mret  = 1'b1; is_decoded = 1'b1; end
+                            // sfence/fence/wfi 等：未实现但合法，当 NOP
+                            default: begin
+                                rd_src     = RD_FROM_ALU;
+                                is_decoded = 1'b1;
+                            end
                         endcase
                     end
-                    FUNCT3_CSRRW:  begin rd_src = RD_FROM_CSR; is_csr = 1'b1; csr_op = CSR_RW;  jump_type = JT_CSR; end
-                    FUNCT3_CSRRS:  begin rd_src = RD_FROM_CSR; is_csr = 1'b1; csr_op = CSR_RS;  jump_type = JT_CSR; end
-                    FUNCT3_CSRRC:  begin rd_src = RD_FROM_CSR; is_csr = 1'b1; csr_op = CSR_RC;  jump_type = JT_CSR; end
-                    FUNCT3_CSRRWI: begin rd_src = RD_FROM_CSR; is_csr = 1'b1; csr_op = CSR_RWI; is_csr_imm = 1'b1; jump_type = JT_CSR; end
-                    FUNCT3_CSRRSI: begin rd_src = RD_FROM_CSR; is_csr = 1'b1; csr_op = CSR_RSI; is_csr_imm = 1'b1; jump_type = JT_CSR; end
-                    FUNCT3_CSRRCI: begin rd_src = RD_FROM_CSR; is_csr = 1'b1; csr_op = CSR_RCI; is_csr_imm = 1'b1; jump_type = JT_CSR; end
+                    FUNCT3_CSRRW:  begin rd_src = RD_FROM_CSR; is_csr = 1'b1; csr_op = CSR_RW;  jump_type = JT_CSR; is_decoded = 1'b1; end
+                    FUNCT3_CSRRS:  begin rd_src = RD_FROM_CSR; is_csr = 1'b1; csr_op = CSR_RS;  jump_type = JT_CSR; is_decoded = 1'b1; end
+                    FUNCT3_CSRRC:  begin rd_src = RD_FROM_CSR; is_csr = 1'b1; csr_op = CSR_RC;  jump_type = JT_CSR; is_decoded = 1'b1; end
+                    FUNCT3_CSRRWI: begin rd_src = RD_FROM_CSR; is_csr = 1'b1; csr_op = CSR_RWI; is_csr_imm = 1'b1; jump_type = JT_CSR; is_decoded = 1'b1; end
+                    FUNCT3_CSRRSI: begin rd_src = RD_FROM_CSR; is_csr = 1'b1; csr_op = CSR_RSI; is_csr_imm = 1'b1; jump_type = JT_CSR; is_decoded = 1'b1; end
+                    FUNCT3_CSRRCI: begin rd_src = RD_FROM_CSR; is_csr = 1'b1; csr_op = CSR_RCI; is_csr_imm = 1'b1; jump_type = JT_CSR; is_decoded = 1'b1; end
+                    // 非 Zicsr 的 SYSTEM 变体：当 NOP
                     default: begin
-                        // 非 Zicsr 的 SYSTEM 指令：当前不识别，回退为 NOP
-                        rd_src = RD_FROM_ALU;
+                        rd_src     = RD_FROM_ALU;
+                        is_decoded = 1'b1;
                     end
                 endcase
             end
@@ -234,5 +248,7 @@ module Decoder (
             default: ;
         endcase
     end
+
+    assign is_illegal = !is_decoded;
 
 endmodule

@@ -41,6 +41,7 @@ module VectorDecoder (
         v_decode.vtypei  = inst[30:20];
         v_decode.format  = V_FMT_NONE;
         v_decode.op_class = V_CLASS_NONE;
+        v_decode.alu_op   = V_ALU_NONE;
 
         unique case (opcode_w)
             OP_VECTOR: begin
@@ -74,14 +75,55 @@ module VectorDecoder (
                     3'b000: begin
                         v_decode.op_class = V_CLASS_ALU;
                         v_decode.format   = V_FMT_VV;
+                        unique case (funct6)
+                            6'b000000: v_decode.alu_op = V_ALU_ADD;
+                            6'b000010: v_decode.alu_op = V_ALU_SUB;
+                            6'b001001: v_decode.alu_op = V_ALU_AND;
+                            6'b001010: v_decode.alu_op = V_ALU_OR;
+                            6'b001011: v_decode.alu_op = V_ALU_XOR;
+                            6'b100101: v_decode.alu_op = V_ALU_SLL;
+                            6'b101000: v_decode.alu_op = V_ALU_SRL;
+                            6'b101001: v_decode.alu_op = V_ALU_SRA;
+                            default: begin
+                                v_decode.op_class = V_CLASS_UNKNOWN;
+                                v_decode.illegal  = 1'b1;
+                            end
+                        endcase
                     end
                     3'b011: begin
                         v_decode.op_class = V_CLASS_ALU;
                         v_decode.format   = V_FMT_VI;
+                        unique case (funct6)
+                            6'b000000: v_decode.alu_op = V_ALU_ADD;
+                            6'b001001: v_decode.alu_op = V_ALU_AND;
+                            6'b001010: v_decode.alu_op = V_ALU_OR;
+                            6'b001011: v_decode.alu_op = V_ALU_XOR;
+                            6'b100101: v_decode.alu_op = V_ALU_SLL;
+                            6'b101000: v_decode.alu_op = V_ALU_SRL;
+                            6'b101001: v_decode.alu_op = V_ALU_SRA;
+                            default: begin
+                                v_decode.op_class = V_CLASS_UNKNOWN;
+                                v_decode.illegal  = 1'b1;
+                            end
+                        endcase
                     end
                     3'b100: begin
                         v_decode.op_class = V_CLASS_ALU;
                         v_decode.format   = V_FMT_VX;
+                        unique case (funct6)
+                            6'b000000: v_decode.alu_op = V_ALU_ADD;
+                            6'b000010: v_decode.alu_op = V_ALU_SUB;
+                            6'b001001: v_decode.alu_op = V_ALU_AND;
+                            6'b001010: v_decode.alu_op = V_ALU_OR;
+                            6'b001011: v_decode.alu_op = V_ALU_XOR;
+                            6'b100101: v_decode.alu_op = V_ALU_SLL;
+                            6'b101000: v_decode.alu_op = V_ALU_SRL;
+                            6'b101001: v_decode.alu_op = V_ALU_SRA;
+                            default: begin
+                                v_decode.op_class = V_CLASS_UNKNOWN;
+                                v_decode.illegal  = 1'b1;
+                            end
+                        endcase
                     end
 
                     // OPMVV / OPMVX 通常承载 mask、归约、重排等操作，先按 funct6 做粗分类。

@@ -47,12 +47,25 @@ package V_PKG;
         V_CFG_SETVL   = 2'd3
     } V_CFG_KIND;
 
+    typedef enum logic [3:0] {
+        V_ALU_NONE = 4'd0,
+        V_ALU_ADD  = 4'd1,
+        V_ALU_SUB  = 4'd2,
+        V_ALU_AND  = 4'd3,
+        V_ALU_OR   = 4'd4,
+        V_ALU_XOR  = 4'd5,
+        V_ALU_SLL  = 4'd6,
+        V_ALU_SRL  = 4'd7,
+        V_ALU_SRA  = 4'd8
+    } V_ALU_OP;
+
     typedef struct packed {
         logic    valid;        // 当前指令是否落在向量编码空间
         logic    illegal;      // 向量子译码发现的非法组合；执行接入前主 Decoder 暂不消费
         V_CLASS  op_class;
         V_FORMAT format;
         V_CFG_KIND cfg_kind;
+        V_ALU_OP alu_op;
         u5       vd;
         u5       vs1;
         u5       vs2;
@@ -82,6 +95,35 @@ package V_PKG;
         u64   vtype;
         u64   vstart;
     } V_WRITE;
+
+    typedef struct packed {
+        logic write_en;
+        u5    write_addr;
+        vreg_t write_data;
+    } VREG_WRITE;
+
+    typedef struct packed {
+        logic    valid;
+        V_ALU_OP alu_op;
+        V_FORMAT format;
+        u5       vd;
+        u5       vs1;
+        u5       vs2;
+        logic    vm;
+        u5       uimm;
+        V_STATE  state;
+        vreg_t   vs1_data;
+        vreg_t   vs2_data;
+        vreg_t   vd_old_data;
+        vreg_t   mask_data;
+        u64      scalar_rs1_data;
+    } ID_2_VEX;
+
+    typedef struct packed {
+        logic  write_en;
+        u5     vd;
+        vreg_t result;
+    } VEX_2_VWB;
 
 endpackage
 

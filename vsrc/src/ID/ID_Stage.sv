@@ -31,6 +31,7 @@ module ID_Stage (
     input  WB_2_ID   wb_2_id,
     input  CSR_WRITE wb_2_csr,         // 来自 WB 的 CSR 写口（与 wb_2_id 同步生效）
     input  V_WRITE   wb_2_vcsr,        // 来自 WB 的向量状态写口
+    input  VREG_WRITE wb_2_vreg,       // 来自 WB 的向量寄存器写口
     input  logic     trap_write_en,
     input  u64       trap_mstatus_next,
     input  u64       trap_mepc_next,
@@ -43,6 +44,7 @@ module ID_Stage (
     output TRAP_CTX  trap_ctx,
     output ID_2_EX   id_2_ex,
     output ID_2_FWD  id_2_fwd,
+    output ID_2_VEX  id_2_vex,
     output CSR_WRITE csr_write,        // CSR 写请求 ID/EX 寄存器输出，随流水线透传到 WB
     output V_WRITE   vcsr_write,       // vset* 写请求，随流水线透传到 WB
     output u64       gpr [0:31],
@@ -83,6 +85,7 @@ module ID_Stage (
     // VectorRegFile 读出；执行通路接入前仅用于固定模块边界
     vreg_t      vrf_read_data_1;
     vreg_t      vrf_read_data_2;
+    vreg_t      vrf_vd_old_data;
     vreg_t      vrf_mask_data;
 
     // Vector CSR 读出和当拍 vset* 请求
@@ -90,6 +93,7 @@ module ID_Stage (
     logic       v_req_write_en;
     u64         v_req_vl;
     u64         v_req_vtype;
+    logic       dec_is_valusize;
 
     // Sign_Extend 输出
     u64         se_imm;
@@ -153,15 +157,15 @@ module ID_Stage (
         .clk         ( clk ),
         .rst_n       ( rst_n ),
 
-        .write_en    ( 1'b0 ),
-        .write_addr  ( 5'b0 ),
-        .write_data  ( '0 ),
+        .write       ( wb_2_vreg ),
 
         .read_addr_1 ( dec_v_decode.vs1 ),
         .read_addr_2 ( dec_v_decode.vs2 ),
+        .read_addr_3 ( dec_v_decode.vd ),
         .mask_addr   ( 5'b0 ),
         .read_data_1 ( vrf_read_data_1 ),
         .read_data_2 ( vrf_read_data_2 ),
+        .read_data_3 ( vrf_vd_old_data ),
         .mask_data   ( vrf_mask_data )
     );
 
@@ -270,12 +274,17 @@ module ID_Stage (
     logic dec_is_vset;
     logic dec_is_vset_imm;
     logic dec_is_vset_rs2;
+    logic dec_vector_state_illegal;
 
     assign dec_is_vset     = dec_v_decode.valid
                            && (dec_v_decode.op_class == V_CLASS_CONFIG)
                            && (dec_v_decode.cfg_kind != V_CFG_NONE);
     assign dec_is_vset_imm = (dec_v_decode.cfg_kind == V_CFG_SETIVLI);
     assign dec_is_vset_rs2 = (dec_v_decode.cfg_kind == V_CFG_SETVL);
+    assign dec_is_valusize = dec_v_decode.valid
+                          && (dec_v_decode.op_class == V_CLASS_ALU)
+                          && (dec_v_decode.alu_op != V_ALU_NONE);
+    assign dec_vector_state_illegal = dec_is_valusize && v_state.vtype[63];
 
     always_comb begin
         vset_vtype_raw = 64'b0;
@@ -326,6 +335,7 @@ module ID_Stage (
             trap_ctx  <= '0;
             id_2_ex   <= '0;
             id_2_fwd  <= '0;
+            id_2_vex  <= '0;
             csr_write <= '0;
             vcsr_write <= '0;
         end else if (insert_bubble) begin
@@ -333,6 +343,7 @@ module ID_Stage (
             trap_ctx  <= '0;
             id_2_ex   <= '0;
             id_2_fwd  <= '0;
+            id_2_vex  <= '0;
             csr_write <= '0;
             vcsr_write <= '0;
         end else if (!stall) begin
@@ -343,7 +354,7 @@ module ID_Stage (
 
             trap_ctx.is_ecall  <= dec_is_ecall;
             trap_ctx.is_mret   <= dec_is_mret;
-            if (dec_is_illegal) begin
+            if (dec_is_illegal || dec_vector_state_illegal) begin
                 trap_ctx.exc_valid <= 1'b1;
                 trap_ctx.exc_cause <= MCAUSE_ILLEGAL_INST;
                 trap_ctx.exc_tval  <= {32'b0, if_2_id.inst};
@@ -375,6 +386,21 @@ module ID_Stage (
             id_2_fwd.rs1_data <= rf_read_data_1;
             id_2_fwd.rs2_data <= rf_read_data_2;
 
+            id_2_vex.valid           <= dec_is_valusize && !dec_vector_state_illegal;
+            id_2_vex.alu_op          <= dec_v_decode.alu_op;
+            id_2_vex.format          <= dec_v_decode.format;
+            id_2_vex.vd              <= dec_v_decode.vd;
+            id_2_vex.vs1             <= dec_v_decode.vs1;
+            id_2_vex.vs2             <= dec_v_decode.vs2;
+            id_2_vex.vm              <= dec_v_decode.vm;
+            id_2_vex.uimm            <= dec_v_decode.uimm;
+            id_2_vex.state           <= v_state;
+            id_2_vex.vs1_data        <= vrf_read_data_1;
+            id_2_vex.vs2_data        <= vrf_read_data_2;
+            id_2_vex.vd_old_data     <= vrf_vd_old_data;
+            id_2_vex.mask_data       <= vrf_mask_data;
+            id_2_vex.scalar_rs1_data <= rf_read_data_1;
+
             csr_write.write_en   <= csr_req_write_en;
             csr_write.write_addr <= dec_csr_addr;
             csr_write.write_data <= csr_req_write_data;
@@ -395,5 +421,12 @@ module ID_Stage (
     assign id_2_ctrl.is_vset    = dec_is_vset;
     assign id_2_ctrl.is_vset_imm = dec_is_vset_imm;
     assign id_2_ctrl.is_vset_rs2 = dec_is_vset_rs2;
+    assign id_2_ctrl.is_vector_alu = dec_is_valusize;
+    assign id_2_ctrl.is_vector_vx = dec_is_valusize && (dec_v_decode.format == V_FMT_VX);
+    assign id_2_ctrl.v_uses_vs1 = dec_is_valusize && (dec_v_decode.format == V_FMT_VV);
+    assign id_2_ctrl.v_uses_mask = dec_is_valusize && !dec_v_decode.vm;
+    assign id_2_ctrl.vs1_addr = dec_v_decode.vs1;
+    assign id_2_ctrl.vs2_addr = dec_v_decode.vs2;
+    assign id_2_ctrl.vd_addr = dec_v_decode.vd;
 
 endmodule

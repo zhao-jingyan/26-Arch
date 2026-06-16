@@ -9,6 +9,7 @@
 `include "src/top_pkg.sv"
 `include "src/ID/ID_PKG.sv"
 `include "src/EX/ALU_Core.sv"
+`include "src/EX/VectorALU.sv"
 `include "src/EX/Branch_Unit.sv"
 `include "src/EX/PC_Target.sv"
 `include "src/ID/CSR_PKG.sv"
@@ -31,6 +32,7 @@ module EX_Stage (
     input  INST_CTX  inst_ctx_in,
     input  TRAP_CTX  trap_ctx_in,
     input  ID_2_EX   id_2_ex,
+    input  ID_2_VEX  id_2_vex,
     input  FWD_2_EX  fwd_2_ex,
     input  CSR_WRITE csr_write_in,
     input  V_WRITE   vcsr_write_in,
@@ -100,6 +102,13 @@ module EX_Stage (
         .jump_target     ( jump_target )
     );
 
+    VEX_2_VWB vex_2_vwb_w;
+
+    VectorALU u_vector_alu (
+        .id_2_vex  ( id_2_vex ),
+        .vex_2_vwb ( vex_2_vwb_w )
+    );
+
     // rd mux：ALU 结果 / PC+4 / CSR 旧值
     u64 ex_result;
     always_comb begin
@@ -157,6 +166,7 @@ module EX_Stage (
             ex_2_mem.ex_result  <= ex_result;
             ex_2_mem.rs2_data   <= fwd_2_ex.rs2_data;
             ex_2_mem.amo_op     <= id_2_ex.amo_op;
+            ex_2_mem.vex_2_vwb  <= vex_2_vwb_w;
             csr_write_out       <= csr_write_in;
             vcsr_write_out      <= vcsr_write_in;
         end
@@ -172,5 +182,7 @@ module EX_Stage (
                                 || (inst_ctx_in.opcode == OP_AMO);
     assign ex_2_ctrl.rd_addr     = inst_ctx_in.rd_addr;
     assign ex_2_ctrl.is_alu_busy = is_alu_busy;
+    assign ex_2_ctrl.is_vwrite   = id_2_vex.valid;
+    assign ex_2_ctrl.v_rd_addr   = id_2_vex.vd;
 
 endmodule

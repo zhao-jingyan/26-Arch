@@ -77,10 +77,12 @@ module Top (
     MEM_2_CTRL mem_2_ctrl;
 
     FWD_2_EX  fwd_2_ex;
+    ID_2_VEX  id_2_vex;
 
     WB_2_ID   wb_2_id;
     CSR_WRITE wb_2_csr;
     V_WRITE   wb_2_vcsr;
+    VREG_WRITE wb_2_vreg;
     WB_TRAP_EVENT wb_trap_event;
 
     // CSR 写请求贯穿链：ID 段算好 → EX/MEM 透传 → WB 段反向送给 ID 内 CSRFile
@@ -251,6 +253,7 @@ module Top (
         .wb_2_id       ( wb_2_id ),
         .wb_2_csr      ( wb_2_csr ),
         .wb_2_vcsr     ( wb_2_vcsr ),
+        .wb_2_vreg     ( wb_2_vreg ),
         .trap_write_en     ( trap_write_en ),
         .trap_mstatus_next ( trap_mstatus_next ),
         .trap_mepc_next    ( trap_mepc_next ),
@@ -263,6 +266,7 @@ module Top (
         .trap_ctx      ( id_trap_ctx ),
         .id_2_ex       ( id_2_ex ),
         .id_2_fwd      ( id_2_fwd ),
+        .id_2_vex      ( id_2_vex ),
         .csr_write     ( id_csr_write ),
         .vcsr_write    ( id_vcsr_write ),
         .gpr           ( gpr_o ),
@@ -282,6 +286,7 @@ module Top (
         .inst_ctx_in     ( id_inst_ctx ),
         .trap_ctx_in     ( id_trap_ctx ),
         .id_2_ex         ( id_2_ex ),
+        .id_2_vex        ( id_2_vex ),
         .fwd_2_ex        ( fwd_2_ex ),
         .csr_write_in    ( id_csr_write ),
         .vcsr_write_in   ( id_vcsr_write ),
@@ -347,6 +352,7 @@ module Top (
         .wb_2_id         ( wb_2_id ),
         .wb_2_csr        ( wb_2_csr ),
         .wb_2_vcsr       ( wb_2_vcsr ),
+        .wb_2_vreg       ( wb_2_vreg ),
         .wb_trap_event   ( wb_trap_event )
     );
 

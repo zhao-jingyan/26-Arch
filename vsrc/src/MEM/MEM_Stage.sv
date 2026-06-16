@@ -160,6 +160,7 @@ module MEM_Stage (
             mem_2_wb.rd_data  <= rd_data;
             mem_2_wb.mem_addr <= ex_2_mem.ex_result;  // 供 commit 层做 Difftest skip 判定
             mem_2_wb.sc_failed <= sc_failed_w;
+            mem_2_wb.vex_2_vwb <= ex_2_mem.vex_2_vwb;
             csr_write_out     <= csr_write_in;
             vcsr_write_out    <= vcsr_write_in;
         end
@@ -174,5 +175,7 @@ module MEM_Stage (
     // inst_ctx_out 是 MEM/WB 寄存器输出 = WB 段指令（distance-3），由 RegFile 内部 bypass 解决，无需 stall
     assign mem_2_ctrl.rd_addr = inst_ctx_in.rd_addr;
     assign mem_2_ctrl.is_atomic_busy = atomic_busy;
+    assign mem_2_ctrl.is_vwrite = ex_2_mem.vex_2_vwb.write_en;
+    assign mem_2_ctrl.v_rd_addr = ex_2_mem.vex_2_vwb.vd;
 
 endmodule

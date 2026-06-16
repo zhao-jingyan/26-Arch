@@ -55,6 +55,7 @@ module Decoder (
     u5  funct5;
     u7  opcode_w;
     logic is_decoded;
+    logic is_vector_alu_decoded;
 
     assign opcode_w = inst[6:0];
     assign funct3   = inst[14:12];
@@ -63,7 +64,12 @@ module Decoder (
 
     assign opcode   = opcode_w;
     // S/B-type 与 ECALL/MRET 无架构 rd/rs 副作用，Decoder 内部清零
-    assign rd_addr  = (opcode_w == OP_STORE || opcode_w == OP_BRANCH || is_ecall || is_mret) ? 5'b0 : inst[11:7];
+    assign is_vector_alu_decoded = v_decode.valid
+                                 && !v_decode.illegal
+                                 && (v_decode.op_class == V_CLASS_ALU)
+                                 && (v_decode.alu_op != V_ALU_NONE);
+
+    assign rd_addr  = (opcode_w == OP_STORE || opcode_w == OP_BRANCH || is_ecall || is_mret || is_vector_alu_decoded) ? 5'b0 : inst[11:7];
     assign rs1_addr = (is_ecall || is_mret) ? 5'b0 : inst[19:15];
     assign rs2_addr = (is_ecall || is_mret) ? 5'b0 : inst[24:20];
 
@@ -290,13 +296,18 @@ module Decoder (
             OP_VECTOR,
             OP_VECTOR_LOAD,
             OP_VECTOR_STORE: begin
-                // 第一阶段只开放 vsetvli/vsetivli/vsetvl，其余向量指令仍保持非法指令行为。
+                // 先开放 vset* 与最小整数向量 ALU，其余向量指令仍保持非法指令行为。
                 if (v_decode.valid
                     && !v_decode.illegal
                     && (v_decode.op_class == V_CLASS_CONFIG)
                     && (v_decode.cfg_kind != V_CFG_NONE)) begin
                     rd_src     = RD_FROM_VECTOR;
                     jump_type  = JT_CSR;  // 复用 CSR 刷新路径，保证后续向量指令重新读取新状态
+                    is_decoded = 1'b1;
+                end else if (v_decode.valid
+                    && !v_decode.illegal
+                    && (v_decode.op_class == V_CLASS_ALU)
+                    && (v_decode.alu_op != V_ALU_NONE)) begin
                     is_decoded = 1'b1;
                 end else begin
                     is_decoded = 1'b0;

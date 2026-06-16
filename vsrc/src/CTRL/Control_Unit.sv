@@ -61,7 +61,8 @@ module Control_Unit (
     logic id_direct_uses_rs1;
     logic id_direct_uses_rs2;
     assign id_direct_uses_rs1 = (id_2_ctrl.is_csr && !id_2_ctrl.is_csr_imm)
-                             || (id_2_ctrl.is_vset && !id_2_ctrl.is_vset_imm);
+                             || (id_2_ctrl.is_vset && !id_2_ctrl.is_vset_imm)
+                             || id_2_ctrl.is_vector_vx;
     assign id_direct_uses_rs2 = id_2_ctrl.is_vset_rs2;
     assign id_direct_rs_hazard = (  id_direct_uses_rs1
                                  && (id_2_ctrl.rs1_addr != 5'b0)
@@ -72,10 +73,24 @@ module Control_Unit (
                                  && (  (ex_2_ctrl.rd_addr  != 5'b0 && ex_2_ctrl.rd_addr  == id_2_ctrl.rs2_addr)
                                     || (mem_2_ctrl.rd_addr != 5'b0 && mem_2_ctrl.rd_addr == id_2_ctrl.rs2_addr)));
 
+    // 向量寄存器暂不做 forward；ID 读源命中 EX/MEM 中的向量写者时冻结。
+    logic vector_raw_hazard;
+    assign vector_raw_hazard = id_2_ctrl.is_vector_alu
+                             && (  (ex_2_ctrl.is_vwrite
+                                    && (  (id_2_ctrl.v_uses_vs1 && (ex_2_ctrl.v_rd_addr == id_2_ctrl.vs1_addr))
+                                       || (ex_2_ctrl.v_rd_addr == id_2_ctrl.vs2_addr)
+                                       || (ex_2_ctrl.v_rd_addr == id_2_ctrl.vd_addr)
+                                       || (id_2_ctrl.v_uses_mask && (ex_2_ctrl.v_rd_addr == 5'b0))))
+                                || (mem_2_ctrl.is_vwrite
+                                    && (  (id_2_ctrl.v_uses_vs1 && (mem_2_ctrl.v_rd_addr == id_2_ctrl.vs1_addr))
+                                       || (mem_2_ctrl.v_rd_addr == id_2_ctrl.vs2_addr)
+                                       || (mem_2_ctrl.v_rd_addr == id_2_ctrl.vd_addr)
+                                       || (id_2_ctrl.v_uses_mask && (mem_2_ctrl.v_rd_addr == 5'b0)))));
+
     // IF / ID 冻结；EX / MEM / WB 正常推进让 load / 写者自己走到 MEM/WB 出口
     // 切面 B：数据冒险
     logic req_data_stall;
-    assign req_data_stall = load_use_hazard || id_direct_rs_hazard;
+    assign req_data_stall = load_use_hazard || id_direct_rs_hazard || vector_raw_hazard;
 
     // 切面 C/D：控制冒险与特权重定向
     logic req_branch_flush;

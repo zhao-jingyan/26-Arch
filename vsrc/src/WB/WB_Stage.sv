@@ -26,6 +26,7 @@ module WB_Stage (
     output WB_2_ID       wb_2_id,
     output CSR_WRITE     wb_2_csr,
     output V_WRITE       wb_2_vcsr,
+    output VREG_WRITE    wb_2_vreg,
     output WB_TRAP_EVENT wb_trap_event
 );
 
@@ -38,6 +39,9 @@ module WB_Stage (
     // CSR 写直通：MEM/WB 寄存器输出当拍即驱动 CSRFile 写口
     assign wb_2_csr = csr_write;
     assign wb_2_vcsr = vcsr_write;
+    assign wb_2_vreg.write_en   = mem_2_wb.vex_2_vwb.write_en;
+    assign wb_2_vreg.write_addr = mem_2_wb.vex_2_vwb.vd;
+    assign wb_2_vreg.write_data = mem_2_wb.vex_2_vwb.result;
 
     assign wb_trap_event.is_trap_commit = commit_valid;
     assign wb_trap_event.trap_ctx       = trap_ctx;

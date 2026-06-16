@@ -28,6 +28,7 @@ module Interrupt_Unit (
     input  IF_2_ID   if_2_id,
     input  INST_CTX  ex_inst_ctx,
     input  INST_CTX  mem_inst_ctx,
+    input  MEM_2_CTRL mem_2_ctrl,
 
     input  logic     trap_write_en,
     input  u64       trap_mstatus_next,
@@ -99,9 +100,10 @@ module Interrupt_Unit (
                          && (meip_pending || msip_pending)
                          && (int_changed || pending_latched);
 
-    assign int_take = (priv_mode == PRIV_M)
-                    ? (mtip_take_m || other_int_take)
-                    : (global_en && int_pending && (int_changed || pending_latched));
+    assign int_take = !mem_2_ctrl.is_atomic_busy
+                    && ((priv_mode == PRIV_M)
+                        ? (mtip_take_m || other_int_take)
+                        : (global_en && int_pending && (int_changed || pending_latched)));
 
     // M 模式 MTIP：被中断指令为 csrsi 下一条（mem+4）；其余同前
     always_comb begin

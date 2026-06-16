@@ -42,6 +42,7 @@ module Top (
     output logic       commit_wen_o,
     output u8          commit_wdest_o,
     output u64         commit_wdata_o,
+    output logic       commit_sc_failed_o,
     output logic       commit_skip_o,   // 外设 MMIO 访存跳过 Difftest 对账
     output u64         gpr_o [0:31],
     output CSR_STATE   csr_state_o,     // CSR 快照：DifftestCSRState 字段表内的 9 个 CSR
@@ -169,6 +170,7 @@ module Top (
         .if_2_id    ( if_2_id ),
         .ex_inst_ctx( ex_inst_ctx ),
         .mem_inst_ctx( mem_inst_ctx ),
+        .mem_2_ctrl ( mem_2_ctrl ),
 
         .trap_write_en      ( trap_write_en ),
         .trap_mstatus_next  ( trap_mstatus_next ),
@@ -364,11 +366,13 @@ module Top (
     assign commit_wen_o   = (prev_inst_ctx.rd_addr != 5'b0);
     assign commit_wdest_o = {3'b0, prev_inst_ctx.rd_addr};
     assign commit_wdata_o = prev_mem_2_wb.rd_data;
+    assign commit_sc_failed_o = prev_mem_2_wb.sc_failed;
 
     // Difftest skip：提交指令为 load/store 且访存地址 bit31 == 0（外设 MMIO 区）
     logic commit_is_mem;
     assign commit_is_mem = (prev_inst_ctx.opcode == OP_LOAD)
-                        || (prev_inst_ctx.opcode == OP_STORE);
+                        || (prev_inst_ctx.opcode == OP_STORE)
+                        || (prev_inst_ctx.opcode == OP_AMO);
     assign commit_skip_o = commit_is_mem && (prev_mem_2_wb.mem_addr[31] == 1'b0);
 
 endmodule

@@ -59,6 +59,7 @@ module ID_Stage (
     BRANCH_OP   dec_branch_op;
     JUMP_TYPE   dec_jump_type;
     RD_SRC      dec_rd_src;
+    AMO_OP      dec_amo_op;
     logic       dec_is_csr;
     logic       dec_is_csr_imm;
     logic       dec_is_ecall;
@@ -99,6 +100,7 @@ module ID_Stage (
         .branch_op     ( dec_branch_op ),
         .jump_type     ( dec_jump_type ),
         .rd_src        ( dec_rd_src ),
+        .amo_op        ( dec_amo_op ),
 
         .is_csr        ( dec_is_csr ),
         .is_csr_imm    ( dec_is_csr_imm ),
@@ -230,6 +232,7 @@ module ID_Stage (
 
             id_2_ex.imm           <= se_imm;
             id_2_ex.csr_old       <= csr_read_data;  // CSR 旧值，EX 在 RD_FROM_CSR 时选它
+            id_2_ex.amo_op        <= dec_amo_op;
             id_2_ex.is_op1_zero   <= dec_is_op1_zero;
             id_2_ex.is_op1_pc     <= dec_is_op1_pc;
             id_2_ex.is_op2_imm    <= dec_is_op2_imm;

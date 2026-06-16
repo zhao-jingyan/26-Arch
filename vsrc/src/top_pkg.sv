@@ -8,14 +8,17 @@
 
 `ifdef VERILATOR
 `include "src/EX/EX_PKG.sv"
+`include "src/ID/ID_PKG.sv"
 `endif
 
 import common::*;
 import EX_PKG::*;
+import ID_PKG::*;
 
 package top_pkg;
     import common::*;
     import EX_PKG::*;
+    import ID_PKG::*;
 
     typedef enum logic [1:0] {
         PRIV_U = 2'b00,
@@ -63,6 +66,7 @@ package top_pkg;
     typedef struct packed {
         u64         imm;
         u64         csr_old;       // CSR 指令的旧值；非 CSR 指令为 0；EX 在 RD_FROM_CSR 时选它
+        AMO_OP      amo_op;        // A 扩展操作类型；非原子指令为 AMO_OP_NONE
         logic       is_op1_zero;   // LUI 场景
         logic       is_op1_pc;     // AUIPC：ALU op1 = PC
         logic       is_op2_imm;    // OP-IMM / Load / Store / LUI / AUIPC
@@ -77,12 +81,14 @@ package top_pkg;
     typedef struct packed {
         u64 ex_result;   // rd 写回候选（已做 ALU vs PC+4 的 mux）
         u64 rs2_data;    // store 用，原样透传
+        AMO_OP amo_op;   // A 扩展原子操作类型
     } EX_2_MEM;
 
     // MEM → WB：MEM 末尾流水寄存器的业务输出
     typedef struct packed {
         u64 rd_data;     // load 走对齐后的 load_data，其他走 ex_result
         u64 mem_addr;    // load/store 访存地址（= ex_2_mem.ex_result），非访存指令无意义；供 Difftest skip 判定
+        logic sc_failed;  // SC.W 失败标志，供 DifftestInstrCommit.scFailed
     } MEM_2_WB;
 
     // ID → FWD：供 Forward_Unit 判定与默认回退（ID/EX 寄存器 tap）
@@ -131,6 +137,7 @@ package top_pkg;
     // MEM → 控制层：供 CSR rs1 hazard 检测（组合，源自 EX/MEM 寄存器输出）
     typedef struct packed {
         u5 rd_addr;         // MEM 位指令的 rd（distance-2 写者）
+        logic is_atomic_busy; // 原子访存正在 MEM 多拍执行，延迟中断投递
     } MEM_2_CTRL;
 
     // CSRFile 快照：从 ID Stage CSRFile 一路透传到 core.sv 供 Difftest 比对

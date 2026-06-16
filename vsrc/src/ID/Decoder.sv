@@ -31,6 +31,7 @@ module Decoder (
     output BRANCH_OP   branch_op,
     output JUMP_TYPE   jump_type,
     output RD_SRC      rd_src,
+    output AMO_OP      amo_op,
 
     // CSR 相关（Zicsr）
     output logic       is_csr,        // 当前是否 CSR 指令
@@ -46,12 +47,14 @@ module Decoder (
 
     u3  funct3;
     u7  funct7;
+    u5  funct5;
     u7  opcode_w;
     logic is_decoded;
 
     assign opcode_w = inst[6:0];
     assign funct3   = inst[14:12];
     assign funct7   = inst[31:25];
+    assign funct5   = inst[31:27];
 
     assign opcode   = opcode_w;
     // S/B-type 与 ECALL/MRET 无架构 rd/rs 副作用，Decoder 内部清零
@@ -72,6 +75,7 @@ module Decoder (
         branch_op     = BR_NONE;
         jump_type     = JT_NONE;
         rd_src        = RD_FROM_ALU;
+        amo_op        = AMO_OP_NONE;
         is_csr        = 1'b0;
         is_csr_imm    = 1'b0;
         csr_op        = CSR_NONE;
@@ -243,6 +247,34 @@ module Decoder (
                         is_decoded = 1'b1;
                     end
                 endcase
+            end
+
+            OP_AMO: begin
+                // aq/rl 字段（inst[26:25]）在单核实验中忽略；仅实现 funct3=010 的 .W 形式
+                alu_inst_type = NORM;
+                alu_op_code   = ADD;
+                is_op2_imm    = 1'b1;
+                if (funct3 == 3'b010) begin
+                    unique case (funct5)
+                        AMO_LR: begin
+                            if (inst[24:20] == 5'b0) begin
+                                amo_op = AMO_OP_LR;
+                                is_decoded = 1'b1;
+                            end
+                        end
+                        AMO_SC:   begin amo_op = AMO_OP_SC;   is_decoded = 1'b1; end
+                        AMO_SWAP: begin amo_op = AMO_OP_SWAP; is_decoded = 1'b1; end
+                        AMO_ADD:  begin amo_op = AMO_OP_ADD;  is_decoded = 1'b1; end
+                        AMO_XOR:  begin amo_op = AMO_OP_XOR;  is_decoded = 1'b1; end
+                        AMO_AND:  begin amo_op = AMO_OP_AND;  is_decoded = 1'b1; end
+                        AMO_OR:   begin amo_op = AMO_OP_OR;   is_decoded = 1'b1; end
+                        AMO_MIN:  begin amo_op = AMO_OP_MIN;  is_decoded = 1'b1; end
+                        AMO_MAX:  begin amo_op = AMO_OP_MAX;  is_decoded = 1'b1; end
+                        AMO_MINU: begin amo_op = AMO_OP_MINU; is_decoded = 1'b1; end
+                        AMO_MAXU: begin amo_op = AMO_OP_MAXU; is_decoded = 1'b1; end
+                        default: ;
+                    endcase
+                end
             end
 
             default: ;

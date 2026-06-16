@@ -149,6 +149,7 @@ module EX_Stage (
             end
             ex_2_mem.ex_result  <= ex_result;
             ex_2_mem.rs2_data   <= fwd_2_ex.rs2_data;
+            ex_2_mem.amo_op     <= id_2_ex.amo_op;
             csr_write_out       <= csr_write_in;
         end
     end
@@ -159,7 +160,8 @@ module EX_Stage (
 
     // EX → 控制层：EX 位当前指令（即 ID/EX 寄存器输出）的 load / rd 信息，供 load-use 检测
     // is_alu_busy 由 ALU_Core 直接给出，乘除法运行期间触发全流水冻结
-    assign ex_2_ctrl.is_ex_load  = (inst_ctx_in.opcode == OP_LOAD);
+    assign ex_2_ctrl.is_ex_load  = (inst_ctx_in.opcode == OP_LOAD)
+                                || (inst_ctx_in.opcode == OP_AMO);
     assign ex_2_ctrl.rd_addr     = inst_ctx_in.rd_addr;
     assign ex_2_ctrl.is_alu_busy = is_alu_busy;
 

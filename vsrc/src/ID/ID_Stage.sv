@@ -11,6 +11,7 @@
 `include "src/ID/Decoder.sv"
 `include "src/ID/RegFile.sv"
 `include "src/ID/VectorRegFile.sv"
+`include "src/ID/VectorCSRFile.sv"
 `include "src/ID/Sign_Extend.sv"
 `include "src/ID/CSRFile.sv"
 `endif
@@ -29,6 +30,7 @@ module ID_Stage (
     input  IF_2_ID   if_2_id,
     input  WB_2_ID   wb_2_id,
     input  CSR_WRITE wb_2_csr,         // 来自 WB 的 CSR 写口（与 wb_2_id 同步生效）
+    input  V_WRITE   wb_2_vcsr,        // 来自 WB 的向量状态写口
     input  logic     trap_write_en,
     input  u64       trap_mstatus_next,
     input  u64       trap_mepc_next,
@@ -42,6 +44,7 @@ module ID_Stage (
     output ID_2_EX   id_2_ex,
     output ID_2_FWD  id_2_fwd,
     output CSR_WRITE csr_write,        // CSR 写请求 ID/EX 寄存器输出，随流水线透传到 WB
+    output V_WRITE   vcsr_write,       // vset* 写请求，随流水线透传到 WB
     output u64       gpr [0:31],
     output ID_2_CTRL id_2_ctrl,
     output CSR_STATE csr_state,
@@ -81,6 +84,12 @@ module ID_Stage (
     vreg_t      vrf_read_data_1;
     vreg_t      vrf_read_data_2;
     vreg_t      vrf_mask_data;
+
+    // Vector CSR 读出和当拍 vset* 请求
+    V_STATE     v_state;
+    logic       v_req_write_en;
+    u64         v_req_vl;
+    u64         v_req_vtype;
 
     // Sign_Extend 输出
     u64         se_imm;
@@ -156,6 +165,13 @@ module ID_Stage (
         .mask_data   ( vrf_mask_data )
     );
 
+    VectorCSRFile u_vector_csr_file (
+        .clk   ( clk ),
+        .rst_n ( rst_n ),
+        .write ( wb_2_vcsr ),
+        .state ( v_state )
+    );
+
     Sign_Extend u_sign_extend (
         .inst   ( if_2_id.inst ),
         .opcode ( dec_opcode ),
@@ -220,7 +236,89 @@ module ID_Stage (
 
     assign csr_req_write_en = dec_is_csr && csr_op_writes;
 
-    // ID/EX 流水寄存器：物理上同一组，按语义拆成 inst_ctx / id_2_ex / id_2_fwd / csr_write 四个输出
+    function automatic u64 calc_vlmax(input u3 vsew, input u3 vlmul);
+        u64 base_elems;
+        begin
+            base_elems = VLEN_BITS >> (vsew + 3);
+            unique case (vlmul)
+                3'b000: calc_vlmax = base_elems;
+                3'b001: calc_vlmax = base_elems << 1;
+                3'b010: calc_vlmax = base_elems << 2;
+                3'b011: calc_vlmax = base_elems << 3;
+                3'b111: calc_vlmax = base_elems >> 1;
+                3'b110: calc_vlmax = base_elems >> 2;
+                3'b101: calc_vlmax = base_elems >> 3;
+                default: calc_vlmax = 64'b0;
+            endcase
+        end
+    endfunction
+
+    function automatic logic is_supported_vtype(input u64 vtype_value);
+        begin
+            is_supported_vtype = (vtype_value[63] == 1'b0)
+                              && (vtype_value[62:8] == 55'b0)
+                              && (vtype_value[5:3] <= 3'd3)
+                              && (vtype_value[2:0] != 3'b100)
+                              && (calc_vlmax(vtype_value[5:3], vtype_value[2:0]) != 64'b0);
+        end
+    endfunction
+
+    u64 vset_avl;
+    u64 vset_vtype_raw;
+    u64 vset_vlmax;
+    logic vset_vtype_ok;
+    logic dec_is_vset;
+    logic dec_is_vset_imm;
+    logic dec_is_vset_rs2;
+
+    assign dec_is_vset     = dec_v_decode.valid
+                           && (dec_v_decode.op_class == V_CLASS_CONFIG)
+                           && (dec_v_decode.cfg_kind != V_CFG_NONE);
+    assign dec_is_vset_imm = (dec_v_decode.cfg_kind == V_CFG_SETIVLI);
+    assign dec_is_vset_rs2 = (dec_v_decode.cfg_kind == V_CFG_SETVL);
+
+    always_comb begin
+        vset_vtype_raw = 64'b0;
+        unique case (dec_v_decode.cfg_kind)
+            V_CFG_SETVLI,
+            V_CFG_SETIVLI: vset_vtype_raw = {53'b0, dec_v_decode.vtypei};
+            V_CFG_SETVL:   vset_vtype_raw = rf_read_data_2;
+            default:       vset_vtype_raw = 64'b0;
+        endcase
+
+        vset_vtype_ok = is_supported_vtype(vset_vtype_raw);
+        vset_vlmax    = calc_vlmax(vset_vtype_raw[5:3], vset_vtype_raw[2:0]);
+
+        unique case (dec_v_decode.cfg_kind)
+            V_CFG_SETIVLI: vset_avl = {59'b0, dec_v_decode.uimm};
+            V_CFG_SETVLI,
+            V_CFG_SETVL: begin
+                if (dec_rs1_addr != 5'b0)
+                    vset_avl = rf_read_data_1;
+                else if (dec_rd_addr != 5'b0)
+                    vset_avl = 64'hffff_ffff_ffff_ffff;
+                else
+                    vset_avl = v_state.vl;
+            end
+            default: vset_avl = 64'b0;
+        endcase
+
+        if (!dec_is_vset) begin
+            v_req_write_en = 1'b0;
+            v_req_vl       = 64'b0;
+            v_req_vtype    = 64'b0;
+        end else if (!vset_vtype_ok) begin
+            v_req_write_en = 1'b1;
+            v_req_vl       = 64'b0;
+            v_req_vtype    = 64'h8000_0000_0000_0000;
+        end else begin
+            v_req_write_en = 1'b1;
+            v_req_vl       = (vset_avl < vset_vlmax) ? vset_avl : vset_vlmax;
+            v_req_vtype    = vset_vtype_raw;
+        end
+    end
+
+    // ID/EX 流水寄存器：物理上同一组，按语义拆成 inst_ctx / id_2_ex / id_2_fwd / csr_write / vcsr_write 五个输出
     // 优先级：rst_n > insert_bubble（hazard / jump-flush）> !stall（正常推进）
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -229,12 +327,14 @@ module ID_Stage (
             id_2_ex   <= '0;
             id_2_fwd  <= '0;
             csr_write <= '0;
+            vcsr_write <= '0;
         end else if (insert_bubble) begin
             inst_ctx  <= '0;
             trap_ctx  <= '0;
             id_2_ex   <= '0;
             id_2_fwd  <= '0;
             csr_write <= '0;
+            vcsr_write <= '0;
         end else if (!stall) begin
             inst_ctx.pc_inst_address <= if_2_id.pc_inst_address;
             inst_ctx.inst            <= if_2_id.inst;
@@ -259,6 +359,7 @@ module ID_Stage (
 
             id_2_ex.imm           <= se_imm;
             id_2_ex.csr_old       <= csr_read_data;  // CSR 旧值，EX 在 RD_FROM_CSR 时选它
+            id_2_ex.vector_rd_data <= v_req_vl;
             id_2_ex.amo_op        <= dec_amo_op;
             id_2_ex.is_op1_zero   <= dec_is_op1_zero;
             id_2_ex.is_op1_pc     <= dec_is_op1_pc;
@@ -277,6 +378,11 @@ module ID_Stage (
             csr_write.write_en   <= csr_req_write_en;
             csr_write.write_addr <= dec_csr_addr;
             csr_write.write_data <= csr_req_write_data;
+
+            vcsr_write.write_en <= v_req_write_en;
+            vcsr_write.vl       <= v_req_vl;
+            vcsr_write.vtype    <= v_req_vtype;
+            vcsr_write.vstart   <= 64'b0;
         end
     end
 
@@ -286,5 +392,8 @@ module ID_Stage (
     assign id_2_ctrl.rs2_addr   = dec_rs2_addr;
     assign id_2_ctrl.is_csr     = dec_is_csr;
     assign id_2_ctrl.is_csr_imm = dec_is_csr_imm;
+    assign id_2_ctrl.is_vset    = dec_is_vset;
+    assign id_2_ctrl.is_vset_imm = dec_is_vset_imm;
+    assign id_2_ctrl.is_vset_rs2 = dec_is_vset_rs2;
 
 endmodule

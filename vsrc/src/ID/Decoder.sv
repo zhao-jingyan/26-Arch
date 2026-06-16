@@ -290,8 +290,17 @@ module Decoder (
             OP_VECTOR,
             OP_VECTOR_LOAD,
             OP_VECTOR_STORE: begin
-                // RVV 先接入独立子译码和寄存器堆边界；执行通路尚未落地前仍保持非法指令行为。
-                is_decoded = 1'b0;
+                // 第一阶段只开放 vsetvli/vsetivli/vsetvl，其余向量指令仍保持非法指令行为。
+                if (v_decode.valid
+                    && !v_decode.illegal
+                    && (v_decode.op_class == V_CLASS_CONFIG)
+                    && (v_decode.cfg_kind != V_CFG_NONE)) begin
+                    rd_src     = RD_FROM_VECTOR;
+                    jump_type  = JT_CSR;  // 复用 CSR 刷新路径，保证后续向量指令重新读取新状态
+                    is_decoded = 1'b1;
+                end else begin
+                    is_decoded = 1'b0;
+                end
             end
 
             default: ;

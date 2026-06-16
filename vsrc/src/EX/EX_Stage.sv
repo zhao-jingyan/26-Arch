@@ -12,12 +12,14 @@
 `include "src/EX/Branch_Unit.sv"
 `include "src/EX/PC_Target.sv"
 `include "src/ID/CSR_PKG.sv"
+`include "src/ID/V_PKG.sv"
 `endif
 
 import common::*;
 import top_pkg::*;
 import ID_PKG::*;
 import CSR_PKG::*;
+import V_PKG::*;
 
 module EX_Stage (
     input  logic     clk,
@@ -31,6 +33,7 @@ module EX_Stage (
     input  ID_2_EX   id_2_ex,
     input  FWD_2_EX  fwd_2_ex,
     input  CSR_WRITE csr_write_in,
+    input  V_WRITE   vcsr_write_in,
 
     output INST_CTX  inst_ctx_out,
     output TRAP_CTX  trap_ctx_out,
@@ -38,6 +41,7 @@ module EX_Stage (
     output EX_2_FWD  ex_2_fwd,
     output EX_2_CTRL ex_2_ctrl,
     output CSR_WRITE csr_write_out,
+    output V_WRITE   vcsr_write_out,
 
     output logic     pc_should_jump,
     output u64       pc_jump_address
@@ -102,6 +106,7 @@ module EX_Stage (
         unique case (id_2_ex.rd_src)
             RD_FROM_PC_PLUS_4: ex_result = pc_plus_4;
             RD_FROM_CSR:       ex_result = id_2_ex.csr_old;
+            RD_FROM_VECTOR:    ex_result = id_2_ex.vector_rd_data;
             default:           ex_result = alu_core_res;
         endcase
     end
@@ -131,11 +136,13 @@ module EX_Stage (
             trap_ctx_out  <= '0;
             ex_2_mem      <= '0;
             csr_write_out <= '0;
+            vcsr_write_out <= '0;
         end else if (flush) begin
             inst_ctx_out  <= '0;
             trap_ctx_out  <= '0;
             ex_2_mem      <= '0;
             csr_write_out <= '0;
+            vcsr_write_out <= '0;
         end else if (!stall) begin
             inst_ctx_out        <= inst_ctx_in;
             if (jalr_misalign) begin
@@ -151,6 +158,7 @@ module EX_Stage (
             ex_2_mem.rs2_data   <= fwd_2_ex.rs2_data;
             ex_2_mem.amo_op     <= id_2_ex.amo_op;
             csr_write_out       <= csr_write_in;
+            vcsr_write_out      <= vcsr_write_in;
         end
     end
 

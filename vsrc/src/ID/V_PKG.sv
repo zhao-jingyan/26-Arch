@@ -40,14 +40,23 @@ package V_PKG;
         V_FMT_CFG  = 3'd6
     } V_FORMAT;
 
+    typedef enum logic [1:0] {
+        V_CFG_NONE    = 2'd0,
+        V_CFG_SETVLI  = 2'd1,
+        V_CFG_SETIVLI = 2'd2,
+        V_CFG_SETVL   = 2'd3
+    } V_CFG_KIND;
+
     typedef struct packed {
         logic    valid;        // 当前指令是否落在向量编码空间
         logic    illegal;      // 向量子译码发现的非法组合；执行接入前主 Decoder 暂不消费
         V_CLASS  op_class;
         V_FORMAT format;
+        V_CFG_KIND cfg_kind;
         u5       vd;
         u5       vs1;
         u5       vs2;
+        u5       uimm;
         logic    vm;           // inst[25]，1 表示不使用 v0 mask
         u3       funct3;
         u6       funct6;
@@ -56,6 +65,23 @@ package V_PKG;
         u3       nf;           // segment field，实际 NFIELDS = nf + 1
         u11      vtypei;       // vsetvli/vsetivli 立即数字段
     } V_DECODE;
+
+    typedef struct packed {
+        u64 vl;
+        u64 vtype;
+        u64 vstart;
+        u64 vxrm;
+        u64 vxsat;
+        u64 vcsr;
+        u64 vlenb;
+    } V_STATE;
+
+    typedef struct packed {
+        logic write_en;
+        u64   vl;
+        u64   vtype;
+        u64   vstart;
+    } V_WRITE;
 
 endpackage
 

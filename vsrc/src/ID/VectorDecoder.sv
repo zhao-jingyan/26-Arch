@@ -31,6 +31,7 @@ module VectorDecoder (
         v_decode.vd      = inst[11:7];
         v_decode.vs1     = inst[19:15];
         v_decode.vs2     = inst[24:20];
+        v_decode.uimm    = inst[19:15];
         v_decode.vm      = inst[25];
         v_decode.funct3  = funct3;
         v_decode.funct6  = funct6;
@@ -50,6 +51,23 @@ module VectorDecoder (
                     3'b111: begin
                         v_decode.op_class = V_CLASS_CONFIG;
                         v_decode.format   = V_FMT_CFG;
+                        unique casez (inst[31:25])
+                            7'b0??????: begin
+                                v_decode.cfg_kind = V_CFG_SETVLI;
+                                v_decode.vtypei   = inst[30:20];
+                            end
+                            7'b11?????: begin
+                                v_decode.cfg_kind = V_CFG_SETIVLI;
+                                v_decode.vtypei   = {1'b0, inst[29:20]};
+                            end
+                            7'b1000000: begin
+                                v_decode.cfg_kind = V_CFG_SETVL;
+                            end
+                            default: begin
+                                v_decode.cfg_kind = V_CFG_NONE;
+                                v_decode.illegal  = 1'b1;
+                            end
+                        endcase
                     end
 
                     // OPIVV / OPIVI / OPIVX：第一阶段统一归入整数 ALU，具体指令留给执行单元细分。

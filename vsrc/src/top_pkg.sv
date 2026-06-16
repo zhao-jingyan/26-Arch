@@ -9,16 +9,19 @@
 `ifdef VERILATOR
 `include "src/EX/EX_PKG.sv"
 `include "src/ID/ID_PKG.sv"
+`include "src/ID/V_PKG.sv"
 `endif
 
 import common::*;
 import EX_PKG::*;
 import ID_PKG::*;
+import V_PKG::*;
 
 package top_pkg;
     import common::*;
     import EX_PKG::*;
     import ID_PKG::*;
+    import V_PKG::*;
 
     typedef enum logic [1:0] {
         PRIV_U = 2'b00,
@@ -66,6 +69,7 @@ package top_pkg;
     typedef struct packed {
         u64         imm;
         u64         csr_old;       // CSR 指令的旧值；非 CSR 指令为 0；EX 在 RD_FROM_CSR 时选它
+        u64         vector_rd_data; // vset* 写回 rd 的新 vl；非向量配置指令为 0
         AMO_OP      amo_op;        // A 扩展操作类型；非原子指令为 AMO_OP_NONE
         logic       is_op1_zero;   // LUI 场景
         logic       is_op1_pc;     // AUIPC：ALU op1 = PC
@@ -124,6 +128,9 @@ package top_pkg;
         u5    rs2_addr;
         logic is_csr;
         logic is_csr_imm;
+        logic is_vset;
+        logic is_vset_imm;
+        logic is_vset_rs2;  // 仅 vsetvl 需要从 rs2 读取 vtype
     } ID_2_CTRL;
 
     // EX → 控制层：供 load-use 检测的 EX 位当前指令信息（组合，源自 ID/EX 寄存器输出）

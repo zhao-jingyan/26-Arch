@@ -9,12 +9,14 @@
 `include "src/ID/ID_PKG.sv"
 `include "src/MEM/Fetch_Data.sv"
 `include "src/ID/CSR_PKG.sv"
+`include "src/ID/V_PKG.sv"
 `endif
 
 import common::*;
 import top_pkg::*;
 import ID_PKG::*;
 import CSR_PKG::*;
+import V_PKG::*;
 
 module MEM_Stage (
     input  logic       clk,
@@ -27,6 +29,7 @@ module MEM_Stage (
     input  TRAP_CTX    trap_ctx_in,
     input  EX_2_MEM    ex_2_mem,
     input  CSR_WRITE   csr_write_in,
+    input  V_WRITE     vcsr_write_in,
     input  logic       kill_new_req,
 
     output INST_CTX    inst_ctx_out,
@@ -35,6 +38,7 @@ module MEM_Stage (
     output MEM_2_FWD   mem_2_fwd,
     output MEM_2_CTRL  mem_2_ctrl,
     output CSR_WRITE   csr_write_out,
+    output V_WRITE     vcsr_write_out,
 
     output logic       is_mem_ready,
 
@@ -141,12 +145,14 @@ module MEM_Stage (
             trap_ctx_out  <= '0;
             mem_2_wb      <= '0;
             csr_write_out <= '0;
+            vcsr_write_out <= '0;
         end
         else if (flush) begin
             inst_ctx_out  <= '0;
             trap_ctx_out  <= '0;
             mem_2_wb      <= '0;
             csr_write_out <= '0;
+            vcsr_write_out <= '0;
         end
         else if (!stall && is_mem_ready) begin
             inst_ctx_out      <= inst_ctx_in;
@@ -155,6 +161,7 @@ module MEM_Stage (
             mem_2_wb.mem_addr <= ex_2_mem.ex_result;  // 供 commit 层做 Difftest skip 判定
             mem_2_wb.sc_failed <= sc_failed_w;
             csr_write_out     <= csr_write_in;
+            vcsr_write_out    <= vcsr_write_in;
         end
     end
 

@@ -8,20 +8,24 @@
 
 `ifdef VERILATOR
 `include "src/top_pkg.sv"
+`include "src/ID/V_PKG.sv"
 `endif
 
 import common::*;
 import top_pkg::*;
+import V_PKG::*;
 
 module WB_Stage (
     input  INST_CTX      inst_ctx,
     input  TRAP_CTX      trap_ctx,
     input  MEM_2_WB      mem_2_wb,
     input  CSR_WRITE     csr_write,
+    input  V_WRITE       vcsr_write,
     input  logic         commit_valid,
 
     output WB_2_ID       wb_2_id,
     output CSR_WRITE     wb_2_csr,
+    output V_WRITE       wb_2_vcsr,
     output WB_TRAP_EVENT wb_trap_event
 );
 
@@ -33,6 +37,7 @@ module WB_Stage (
 
     // CSR 写直通：MEM/WB 寄存器输出当拍即驱动 CSRFile 写口
     assign wb_2_csr = csr_write;
+    assign wb_2_vcsr = vcsr_write;
 
     assign wb_trap_event.is_trap_commit = commit_valid;
     assign wb_trap_event.trap_ctx       = trap_ctx;

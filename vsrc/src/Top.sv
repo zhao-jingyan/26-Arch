@@ -8,6 +8,7 @@
 `ifdef VERILATOR
 `include "src/top_pkg.sv"
 `include "src/ID/ID_PKG.sv"
+`include "src/ID/V_PKG.sv"
 `include "src/IF/IF_Stage.sv"
 `include "src/ID/ID_Stage.sv"
 `include "src/EX/EX_Stage.sv"
@@ -22,6 +23,7 @@
 import common::*;
 import top_pkg::*;
 import ID_PKG::*;
+import V_PKG::*;
 
 module Top (
     input  logic       clk,
@@ -78,12 +80,16 @@ module Top (
 
     WB_2_ID   wb_2_id;
     CSR_WRITE wb_2_csr;
+    V_WRITE   wb_2_vcsr;
     WB_TRAP_EVENT wb_trap_event;
 
     // CSR 写请求贯穿链：ID 段算好 → EX/MEM 透传 → WB 段反向送给 ID 内 CSRFile
     CSR_WRITE id_csr_write;
     CSR_WRITE ex_csr_write;
     CSR_WRITE mem_csr_write;
+    V_WRITE   id_vcsr_write;
+    V_WRITE   ex_vcsr_write;
+    V_WRITE   mem_vcsr_write;
 
     // trap / privilege 协调
     PRIV_2_CTRL priv_2_ctrl;
@@ -244,6 +250,7 @@ module Top (
         .if_2_id       ( if_2_id ),
         .wb_2_id       ( wb_2_id ),
         .wb_2_csr      ( wb_2_csr ),
+        .wb_2_vcsr     ( wb_2_vcsr ),
         .trap_write_en     ( trap_write_en ),
         .trap_mstatus_next ( trap_mstatus_next ),
         .trap_mepc_next    ( trap_mepc_next ),
@@ -257,6 +264,7 @@ module Top (
         .id_2_ex       ( id_2_ex ),
         .id_2_fwd      ( id_2_fwd ),
         .csr_write     ( id_csr_write ),
+        .vcsr_write    ( id_vcsr_write ),
         .gpr           ( gpr_o ),
         .id_2_ctrl     ( id_2_ctrl ),
         .csr_state     ( csr_state_o ),
@@ -276,6 +284,7 @@ module Top (
         .id_2_ex         ( id_2_ex ),
         .fwd_2_ex        ( fwd_2_ex ),
         .csr_write_in    ( id_csr_write ),
+        .vcsr_write_in   ( id_vcsr_write ),
 
         .inst_ctx_out    ( ex_inst_ctx ),
         .trap_ctx_out    ( ex_trap_ctx ),
@@ -283,6 +292,7 @@ module Top (
         .ex_2_fwd        ( ex_2_fwd ),
         .ex_2_ctrl       ( ex_2_ctrl ),
         .csr_write_out   ( ex_csr_write ),
+        .vcsr_write_out  ( ex_vcsr_write ),
 
         .pc_should_jump  ( ex_pc_should_jump ),
         .pc_jump_address ( ex_pc_jump_address )
@@ -299,6 +309,7 @@ module Top (
         .trap_ctx_in   ( ex_trap_ctx ),
         .ex_2_mem      ( ex_2_mem ),
         .csr_write_in  ( ex_csr_write ),
+        .vcsr_write_in ( ex_vcsr_write ),
         .kill_new_req  ( kill_new_req ),
 
         .inst_ctx_out  ( mem_inst_ctx ),
@@ -307,6 +318,7 @@ module Top (
         .mem_2_fwd     ( mem_2_fwd ),
         .mem_2_ctrl    ( mem_2_ctrl ),
         .csr_write_out ( mem_csr_write ),
+        .vcsr_write_out( mem_vcsr_write ),
 
         .is_mem_ready  ( is_mem_ready ),
 
@@ -329,10 +341,12 @@ module Top (
         .trap_ctx        ( mem_trap_ctx ),
         .mem_2_wb        ( mem_2_wb ),
         .csr_write       ( mem_csr_write ),
+        .vcsr_write      ( mem_vcsr_write ),
         .commit_valid    ( wb_commit_valid ),
 
         .wb_2_id         ( wb_2_id ),
         .wb_2_csr        ( wb_2_csr ),
+        .wb_2_vcsr       ( wb_2_vcsr ),
         .wb_trap_event   ( wb_trap_event )
     );
 

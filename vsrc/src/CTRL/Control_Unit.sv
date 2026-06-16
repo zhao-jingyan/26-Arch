@@ -54,20 +54,28 @@ module Control_Unit (
                           && (  (ex_2_ctrl.rd_addr == id_2_ctrl.rs1_addr)
                              || (ex_2_ctrl.rd_addr == id_2_ctrl.rs2_addr));
 
-    // CSR rs1 hazard（方案 B：CSR 在 ID 一拍读+写，rs1 不能 forward）
-    // ID 位是非 imm 形式 CSR 指令、rs1 != x0、且 EX 或 MEM 槽存在该 rs1 的 in-flight 写者
+    // CSR / vset* 在 ID 段直接读取源寄存器，不能依赖 EX forward。
+    // ID 位源寄存器若命中 EX 或 MEM 槽的 in-flight 写者，需要冻结到写者进入 WB。
     // distance-3（WB 槽）由 RegFile 内部 write-during-read bypass 覆盖，无需 stall
-    logic csr_rs1_hazard;
-    assign csr_rs1_hazard = id_2_ctrl.is_csr
-                         && !id_2_ctrl.is_csr_imm
-                         && (id_2_ctrl.rs1_addr != 5'b0)
-                         && (  (ex_2_ctrl.rd_addr  != 5'b0 && ex_2_ctrl.rd_addr  == id_2_ctrl.rs1_addr)
-                            || (mem_2_ctrl.rd_addr != 5'b0 && mem_2_ctrl.rd_addr == id_2_ctrl.rs1_addr));
+    logic id_direct_rs_hazard;
+    logic id_direct_uses_rs1;
+    logic id_direct_uses_rs2;
+    assign id_direct_uses_rs1 = (id_2_ctrl.is_csr && !id_2_ctrl.is_csr_imm)
+                             || (id_2_ctrl.is_vset && !id_2_ctrl.is_vset_imm);
+    assign id_direct_uses_rs2 = id_2_ctrl.is_vset_rs2;
+    assign id_direct_rs_hazard = (  id_direct_uses_rs1
+                                 && (id_2_ctrl.rs1_addr != 5'b0)
+                                 && (  (ex_2_ctrl.rd_addr  != 5'b0 && ex_2_ctrl.rd_addr  == id_2_ctrl.rs1_addr)
+                                    || (mem_2_ctrl.rd_addr != 5'b0 && mem_2_ctrl.rd_addr == id_2_ctrl.rs1_addr)))
+                              || (  id_direct_uses_rs2
+                                 && (id_2_ctrl.rs2_addr != 5'b0)
+                                 && (  (ex_2_ctrl.rd_addr  != 5'b0 && ex_2_ctrl.rd_addr  == id_2_ctrl.rs2_addr)
+                                    || (mem_2_ctrl.rd_addr != 5'b0 && mem_2_ctrl.rd_addr == id_2_ctrl.rs2_addr)));
 
     // IF / ID 冻结；EX / MEM / WB 正常推进让 load / 写者自己走到 MEM/WB 出口
     // 切面 B：数据冒险
     logic req_data_stall;
-    assign req_data_stall = load_use_hazard || csr_rs1_hazard;
+    assign req_data_stall = load_use_hazard || id_direct_rs_hazard;
 
     // 切面 C/D：控制冒险与特权重定向
     logic req_branch_flush;

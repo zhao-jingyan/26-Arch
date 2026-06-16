@@ -6,12 +6,15 @@
 `ifdef VERILATOR
 `include "src/ID/ID_PKG.sv"
 `include "src/ID/CSR_PKG.sv"
+`include "src/ID/V_PKG.sv"
+`include "src/ID/VectorDecoder.sv"
 `include "src/EX/EX_PKG.sv"
 `endif
 
 import common::*;
 import ID_PKG::*;
 import CSR_PKG::*;
+import V_PKG::*;
 import EX_PKG::*;
 
 module Decoder (
@@ -40,6 +43,8 @@ module Decoder (
     output u12         csr_addr,      // CSR 地址 = inst[31:20]
     output u5          csr_uimm,      // 5-bit zero-extended uimm = inst[19:15]
 
+    output V_DECODE    v_decode,      // RVV 子译码结果；执行通路接入前仅作为 sideband
+
     output logic       is_ecall,
     output logic       is_mret,
     output logic       is_illegal
@@ -65,6 +70,11 @@ module Decoder (
     // CSR 字段：地址固定取 inst[31:20]，uimm 取 inst[19:15]
     assign csr_addr = inst[31:20];
     assign csr_uimm = inst[19:15];
+
+    VectorDecoder u_vector_decoder (
+        .inst     ( inst ),
+        .v_decode ( v_decode )
+    );
 
     always_comb begin
         alu_op_code   = ADD;
@@ -275,6 +285,13 @@ module Decoder (
                         default: ;
                     endcase
                 end
+            end
+
+            OP_VECTOR,
+            OP_VECTOR_LOAD,
+            OP_VECTOR_STORE: begin
+                // RVV 先接入独立子译码和寄存器堆边界；执行通路尚未落地前仍保持非法指令行为。
+                is_decoded = 1'b0;
             end
 
             default: ;

@@ -7,8 +7,10 @@
 `ifdef VERILATOR
 `include "src/top_pkg.sv"
 `include "src/ID/CSR_PKG.sv"
+`include "src/ID/V_PKG.sv"
 `include "src/ID/Decoder.sv"
 `include "src/ID/RegFile.sv"
+`include "src/ID/VectorRegFile.sv"
 `include "src/ID/Sign_Extend.sv"
 `include "src/ID/CSRFile.sv"
 `endif
@@ -16,6 +18,7 @@
 import common::*;
 import top_pkg::*;
 import CSR_PKG::*;
+import V_PKG::*;
 
 module ID_Stage (
     input  logic     clk,
@@ -68,10 +71,16 @@ module ID_Stage (
     CSR_OP      dec_csr_op;
     u12         dec_csr_addr;
     u5          dec_csr_uimm;
+    V_DECODE    dec_v_decode;
 
     // RegFile 读出
     u64         rf_read_data_1;
     u64         rf_read_data_2;
+
+    // VectorRegFile 读出；执行通路接入前仅用于固定模块边界
+    vreg_t      vrf_read_data_1;
+    vreg_t      vrf_read_data_2;
+    vreg_t      vrf_mask_data;
 
     // Sign_Extend 输出
     u64         se_imm;
@@ -108,6 +117,8 @@ module ID_Stage (
         .csr_addr      ( dec_csr_addr ),
         .csr_uimm      ( dec_csr_uimm ),
 
+        .v_decode      ( dec_v_decode ),
+
         .is_ecall      ( dec_is_ecall ),
         .is_mret       ( dec_is_mret ),
         .is_illegal    ( dec_is_illegal )
@@ -127,6 +138,22 @@ module ID_Stage (
         .read_data_2  ( rf_read_data_2 ),
 
         .gpr          ( gpr )
+    );
+
+    VectorRegFile u_vector_regfile (
+        .clk         ( clk ),
+        .rst_n       ( rst_n ),
+
+        .write_en    ( 1'b0 ),
+        .write_addr  ( 5'b0 ),
+        .write_data  ( '0 ),
+
+        .read_addr_1 ( dec_v_decode.vs1 ),
+        .read_addr_2 ( dec_v_decode.vs2 ),
+        .mask_addr   ( 5'b0 ),
+        .read_data_1 ( vrf_read_data_1 ),
+        .read_data_2 ( vrf_read_data_2 ),
+        .mask_data   ( vrf_mask_data )
     );
 
     Sign_Extend u_sign_extend (

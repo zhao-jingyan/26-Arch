@@ -21,6 +21,9 @@ package ID_PKG;
     localparam logic [6:0] OP_AUIPC  = 7'b0010111;
     localparam logic [6:0] OP_SYSTEM = 7'b1110011;
     localparam logic [6:0] OP_AMO    = 7'b0101111;
+    localparam logic [6:0] OP_VECTOR_LOAD  = 7'b0000111;  // RVV vector load，与浮点 load 共用主 opcode
+    localparam logic [6:0] OP_VECTOR_STORE = 7'b0100111;  // RVV vector store，与浮点 store 共用主 opcode
+    localparam logic [6:0] OP_VECTOR       = 7'b1010111;  // RVV OP-V
 
     // SYSTEM/funct3=000 指令
     localparam logic [11:0] FUNCT12_ECALL = 12'h000;

@@ -28,6 +28,7 @@ module core import common::*; import top_pkg::*; (
 	logic       commit_wen;
 	logic [7:0] commit_wdest;
 	word_t      commit_wdata;
+	logic       commit_sc_failed;
 	logic       commit_skip;
 	word_t      gpr [0:31];
 	CSR_STATE   csr_state;
@@ -50,6 +51,7 @@ module core import common::*; import top_pkg::*; (
 		.commit_wen_o   ( commit_wen ),
 		.commit_wdest_o ( commit_wdest ),
 		.commit_wdata_o ( commit_wdata ),
+		.commit_sc_failed_o ( commit_sc_failed ),
 		.commit_skip_o  ( commit_skip ),
 		.gpr_o          ( gpr ),
 		.csr_state_o    ( csr_state ),
@@ -71,7 +73,7 @@ module core import common::*; import top_pkg::*; (
 		.instr              (commit_instr),   // 这条指令的内容
 		.skip               (commit_skip),   // load/store 打到外设 MMIO 区（addr[31]==0）时跳过 Difftest 对账
 		.isRVC              (0),              // 无需改动
-		.scFailed           (0),              // 无需改动
+		.scFailed           (commit_sc_failed),
 		.wen                (commit_wen),     // 是否写入 GPR
 		.wdest              (commit_wdest),   // 写入哪个 GPR
 		.wdata              (commit_wdata)    // 写入的值

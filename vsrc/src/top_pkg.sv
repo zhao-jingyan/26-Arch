@@ -8,14 +8,20 @@
 
 `ifdef VERILATOR
 `include "src/EX/EX_PKG.sv"
+`include "src/ID/ID_PKG.sv"
+`include "src/ID/V_PKG.sv"
 `endif
 
 import common::*;
 import EX_PKG::*;
+import ID_PKG::*;
+import V_PKG::*;
 
 package top_pkg;
     import common::*;
     import EX_PKG::*;
+    import ID_PKG::*;
+    import V_PKG::*;
 
     typedef enum logic [1:0] {
         PRIV_U = 2'b00,
@@ -63,6 +69,8 @@ package top_pkg;
     typedef struct packed {
         u64         imm;
         u64         csr_old;       // CSR 指令的旧值；非 CSR 指令为 0；EX 在 RD_FROM_CSR 时选它
+        u64         vector_rd_data; // vset* 写回 rd 的新 vl；非向量配置指令为 0
+        AMO_OP      amo_op;        // A 扩展操作类型；非原子指令为 AMO_OP_NONE
         logic       is_op1_zero;   // LUI 场景
         logic       is_op1_pc;     // AUIPC：ALU op1 = PC
         logic       is_op2_imm;    // OP-IMM / Load / Store / LUI / AUIPC
@@ -77,12 +85,17 @@ package top_pkg;
     typedef struct packed {
         u64 ex_result;   // rd 写回候选（已做 ALU vs PC+4 的 mux）
         u64 rs2_data;    // store 用，原样透传
+        AMO_OP amo_op;   // A 扩展原子操作类型
+        VEX_2_VWB vex_2_vwb; // 向量执行结果，随流水线到 WB 写回 VectorRegFile
+        ID_2_VMEM vmem;
     } EX_2_MEM;
 
     // MEM → WB：MEM 末尾流水寄存器的业务输出
     typedef struct packed {
         u64 rd_data;     // load 走对齐后的 load_data，其他走 ex_result
         u64 mem_addr;    // load/store 访存地址（= ex_2_mem.ex_result），非访存指令无意义；供 Difftest skip 判定
+        logic sc_failed;  // SC.W 失败标志，供 DifftestInstrCommit.scFailed
+        VEX_2_VWB vex_2_vwb;
     } MEM_2_WB;
 
     // ID → FWD：供 Forward_Unit 判定与默认回退（ID/EX 寄存器 tap）
@@ -118,6 +131,19 @@ package top_pkg;
         u5    rs2_addr;
         logic is_csr;
         logic is_csr_imm;
+        logic is_vset;
+        logic is_vset_imm;
+        logic is_vset_rs2;  // 仅 vsetvl 需要从 rs2 读取 vtype
+        logic is_vector_alu;
+        logic is_vector_mem;
+        logic is_vector_vx;
+        logic v_uses_vs1;
+        logic v_uses_mask;
+        logic v_uses_vs3;
+        u5    vs1_addr;
+        u5    vs2_addr;
+        u5    vd_addr;
+        u5    vs3_addr;
     } ID_2_CTRL;
 
     // EX → 控制层：供 load-use 检测的 EX 位当前指令信息（组合，源自 ID/EX 寄存器输出）
@@ -126,11 +152,20 @@ package top_pkg;
         logic is_ex_load;   // EX 位指令是否为 load
         u5    rd_addr;      // EX 位指令的 rd
         logic is_alu_busy;  // ALU 多周期单元（乘除法）正在运行
+        logic is_vwrite;    // EX 位指令是否将在 WB 写向量寄存器
+        u5    v_rd_addr;
+        logic is_vcsr_write; // EX 位指令是否将在 WB 写向量状态
+        logic is_vmem_busy;
     } EX_2_CTRL;
 
     // MEM → 控制层：供 CSR rs1 hazard 检测（组合，源自 EX/MEM 寄存器输出）
     typedef struct packed {
         u5 rd_addr;         // MEM 位指令的 rd（distance-2 写者）
+        logic is_atomic_busy; // 原子访存正在 MEM 多拍执行，延迟中断投递
+        logic is_vwrite;      // MEM 位指令是否将在 WB 写向量寄存器
+        u5    v_rd_addr;
+        logic is_vcsr_write;  // MEM 位指令是否将在 WB 写向量状态
+        logic is_vmem_busy;
     } MEM_2_CTRL;
 
     // CSRFile 快照：从 ID Stage CSRFile 一路透传到 core.sv 供 Difftest 比对

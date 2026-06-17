@@ -6,12 +6,15 @@
 `ifdef VERILATOR
 `include "src/ID/ID_PKG.sv"
 `include "src/ID/CSR_PKG.sv"
+`include "src/ID/V_PKG.sv"
+`include "src/ID/VectorDecoder.sv"
 `include "src/EX/EX_PKG.sv"
 `endif
 
 import common::*;
 import ID_PKG::*;
 import CSR_PKG::*;
+import V_PKG::*;
 import EX_PKG::*;
 
 module Decoder (
@@ -31,6 +34,7 @@ module Decoder (
     output BRANCH_OP   branch_op,
     output JUMP_TYPE   jump_type,
     output RD_SRC      rd_src,
+    output AMO_OP      amo_op,
 
     // CSR 相关（Zicsr）
     output logic       is_csr,        // 当前是否 CSR 指令
@@ -39,6 +43,8 @@ module Decoder (
     output u12         csr_addr,      // CSR 地址 = inst[31:20]
     output u5          csr_uimm,      // 5-bit zero-extended uimm = inst[19:15]
 
+    output V_DECODE    v_decode,      // RVV 子译码结果；执行通路接入前仅作为 sideband
+
     output logic       is_ecall,
     output logic       is_mret,
     output logic       is_illegal
@@ -46,22 +52,39 @@ module Decoder (
 
     u3  funct3;
     u7  funct7;
+    u5  funct5;
     u7  opcode_w;
     logic is_decoded;
+    logic is_vector_alu_decoded;
+    logic is_vector_mem_decoded;
 
     assign opcode_w = inst[6:0];
     assign funct3   = inst[14:12];
     assign funct7   = inst[31:25];
+    assign funct5   = inst[31:27];
 
     assign opcode   = opcode_w;
     // S/B-type 与 ECALL/MRET 无架构 rd/rs 副作用，Decoder 内部清零
-    assign rd_addr  = (opcode_w == OP_STORE || opcode_w == OP_BRANCH || is_ecall || is_mret) ? 5'b0 : inst[11:7];
+    assign is_vector_alu_decoded = v_decode.valid
+                                 && !v_decode.illegal
+                                 && (v_decode.op_class == V_CLASS_ALU)
+                                 && (v_decode.alu_op != V_ALU_NONE);
+    assign is_vector_mem_decoded = v_decode.valid
+                                 && !v_decode.illegal
+                                 && ((v_decode.op_class == V_CLASS_LOAD) || (v_decode.op_class == V_CLASS_STORE));
+
+    assign rd_addr  = (opcode_w == OP_STORE || opcode_w == OP_BRANCH || is_ecall || is_mret || is_vector_alu_decoded || is_vector_mem_decoded) ? 5'b0 : inst[11:7];
     assign rs1_addr = (is_ecall || is_mret) ? 5'b0 : inst[19:15];
     assign rs2_addr = (is_ecall || is_mret) ? 5'b0 : inst[24:20];
 
     // CSR 字段：地址固定取 inst[31:20]，uimm 取 inst[19:15]
     assign csr_addr = inst[31:20];
     assign csr_uimm = inst[19:15];
+
+    VectorDecoder u_vector_decoder (
+        .inst     ( inst ),
+        .v_decode ( v_decode )
+    );
 
     always_comb begin
         alu_op_code   = ADD;
@@ -72,6 +95,7 @@ module Decoder (
         branch_op     = BR_NONE;
         jump_type     = JT_NONE;
         rd_src        = RD_FROM_ALU;
+        amo_op        = AMO_OP_NONE;
         is_csr        = 1'b0;
         is_csr_imm    = 1'b0;
         csr_op        = CSR_NONE;
@@ -243,6 +267,64 @@ module Decoder (
                         is_decoded = 1'b1;
                     end
                 endcase
+            end
+
+            OP_AMO: begin
+                // aq/rl 字段（inst[26:25]）在单核实验中忽略；仅实现 funct3=010 的 .W 形式
+                alu_inst_type = NORM;
+                alu_op_code   = ADD;
+                is_op2_imm    = 1'b1;
+                if (funct3 == 3'b010) begin
+                    unique case (funct5)
+                        AMO_LR: begin
+                            if (inst[24:20] == 5'b0) begin
+                                amo_op = AMO_OP_LR;
+                                is_decoded = 1'b1;
+                            end
+                        end
+                        AMO_SC:   begin amo_op = AMO_OP_SC;   is_decoded = 1'b1; end
+                        AMO_SWAP: begin amo_op = AMO_OP_SWAP; is_decoded = 1'b1; end
+                        AMO_ADD:  begin amo_op = AMO_OP_ADD;  is_decoded = 1'b1; end
+                        AMO_XOR:  begin amo_op = AMO_OP_XOR;  is_decoded = 1'b1; end
+                        AMO_AND:  begin amo_op = AMO_OP_AND;  is_decoded = 1'b1; end
+                        AMO_OR:   begin amo_op = AMO_OP_OR;   is_decoded = 1'b1; end
+                        AMO_MIN:  begin amo_op = AMO_OP_MIN;  is_decoded = 1'b1; end
+                        AMO_MAX:  begin amo_op = AMO_OP_MAX;  is_decoded = 1'b1; end
+                        AMO_MINU: begin amo_op = AMO_OP_MINU; is_decoded = 1'b1; end
+                        AMO_MAXU: begin amo_op = AMO_OP_MAXU; is_decoded = 1'b1; end
+                        default: ;
+                    endcase
+                end
+            end
+
+            OP_VECTOR,
+            OP_VECTOR_LOAD,
+            OP_VECTOR_STORE: begin
+                // 先开放 vset* 与最小整数向量 ALU，其余向量指令仍保持非法指令行为。
+                if (v_decode.valid
+                    && !v_decode.illegal
+                    && (v_decode.op_class == V_CLASS_CONFIG)
+                    && (v_decode.cfg_kind != V_CFG_NONE)) begin
+                    rd_src     = RD_FROM_VECTOR;
+                    jump_type  = JT_CSR;  // 复用 CSR 刷新路径，保证后续向量指令重新读取新状态
+                    is_decoded = 1'b1;
+                end else if (v_decode.valid
+                    && !v_decode.illegal
+                    && (v_decode.op_class == V_CLASS_ALU)
+                    && (v_decode.alu_op != V_ALU_NONE)) begin
+                    is_decoded = 1'b1;
+                end else if (v_decode.valid
+                    && !v_decode.illegal
+                    && ((v_decode.op_class == V_CLASS_LOAD) || (v_decode.op_class == V_CLASS_STORE))
+                    && (v_decode.width == 3'b111)
+                    && (v_decode.mop == 2'b00)
+                    && (v_decode.nf == 3'b000)) begin
+                    alu_op_code = ADD;
+                    is_op2_imm  = 1'b1;
+                    is_decoded  = 1'b1;
+                end else begin
+                    is_decoded = 1'b0;
+                end
             end
 
             default: ;

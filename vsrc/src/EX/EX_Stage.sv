@@ -9,15 +9,18 @@
 `include "src/top_pkg.sv"
 `include "src/ID/ID_PKG.sv"
 `include "src/EX/ALU_Core.sv"
+`include "src/EX/VectorALU.sv"
 `include "src/EX/Branch_Unit.sv"
 `include "src/EX/PC_Target.sv"
 `include "src/ID/CSR_PKG.sv"
+`include "src/ID/V_PKG.sv"
 `endif
 
 import common::*;
 import top_pkg::*;
 import ID_PKG::*;
 import CSR_PKG::*;
+import V_PKG::*;
 
 module EX_Stage (
     input  logic     clk,
@@ -29,8 +32,11 @@ module EX_Stage (
     input  INST_CTX  inst_ctx_in,
     input  TRAP_CTX  trap_ctx_in,
     input  ID_2_EX   id_2_ex,
+    input  ID_2_VEX  id_2_vex,
+    input  ID_2_VMEM id_2_vmem,
     input  FWD_2_EX  fwd_2_ex,
     input  CSR_WRITE csr_write_in,
+    input  V_WRITE   vcsr_write_in,
 
     output INST_CTX  inst_ctx_out,
     output TRAP_CTX  trap_ctx_out,
@@ -38,6 +44,7 @@ module EX_Stage (
     output EX_2_FWD  ex_2_fwd,
     output EX_2_CTRL ex_2_ctrl,
     output CSR_WRITE csr_write_out,
+    output V_WRITE   vcsr_write_out,
 
     output logic     pc_should_jump,
     output u64       pc_jump_address
@@ -96,12 +103,20 @@ module EX_Stage (
         .jump_target     ( jump_target )
     );
 
+    VEX_2_VWB vex_2_vwb_w;
+
+    VectorALU u_vector_alu (
+        .id_2_vex  ( id_2_vex ),
+        .vex_2_vwb ( vex_2_vwb_w )
+    );
+
     // rd mux：ALU 结果 / PC+4 / CSR 旧值
     u64 ex_result;
     always_comb begin
         unique case (id_2_ex.rd_src)
             RD_FROM_PC_PLUS_4: ex_result = pc_plus_4;
             RD_FROM_CSR:       ex_result = id_2_ex.csr_old;
+            RD_FROM_VECTOR:    ex_result = id_2_ex.vector_rd_data;
             default:           ex_result = alu_core_res;
         endcase
     end
@@ -131,11 +146,13 @@ module EX_Stage (
             trap_ctx_out  <= '0;
             ex_2_mem      <= '0;
             csr_write_out <= '0;
+            vcsr_write_out <= '0;
         end else if (flush) begin
             inst_ctx_out  <= '0;
             trap_ctx_out  <= '0;
             ex_2_mem      <= '0;
             csr_write_out <= '0;
+            vcsr_write_out <= '0;
         end else if (!stall) begin
             inst_ctx_out        <= inst_ctx_in;
             if (jalr_misalign) begin
@@ -149,7 +166,11 @@ module EX_Stage (
             end
             ex_2_mem.ex_result  <= ex_result;
             ex_2_mem.rs2_data   <= fwd_2_ex.rs2_data;
+            ex_2_mem.amo_op     <= id_2_ex.amo_op;
+            ex_2_mem.vex_2_vwb  <= vex_2_vwb_w;
+            ex_2_mem.vmem       <= id_2_vmem;
             csr_write_out       <= csr_write_in;
+            vcsr_write_out      <= vcsr_write_in;
         end
     end
 
@@ -159,8 +180,13 @@ module EX_Stage (
 
     // EX → 控制层：EX 位当前指令（即 ID/EX 寄存器输出）的 load / rd 信息，供 load-use 检测
     // is_alu_busy 由 ALU_Core 直接给出，乘除法运行期间触发全流水冻结
-    assign ex_2_ctrl.is_ex_load  = (inst_ctx_in.opcode == OP_LOAD);
+    assign ex_2_ctrl.is_ex_load  = (inst_ctx_in.opcode == OP_LOAD)
+                                || (inst_ctx_in.opcode == OP_AMO);
     assign ex_2_ctrl.rd_addr     = inst_ctx_in.rd_addr;
     assign ex_2_ctrl.is_alu_busy = is_alu_busy;
+    assign ex_2_ctrl.is_vwrite   = id_2_vex.valid;
+    assign ex_2_ctrl.v_rd_addr   = id_2_vex.vd;
+    assign ex_2_ctrl.is_vcsr_write = vcsr_write_in.write_en;
+    assign ex_2_ctrl.is_vmem_busy = id_2_vmem.valid;
 
 endmodule

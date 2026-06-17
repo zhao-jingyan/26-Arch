@@ -47,11 +47,12 @@ package EX_PKG;
         BR_GEU  = 3'd6
     } BRANCH_OP;
 
-    // rd 写回数据源：ALU 结果 / PC+4（JAL/JALR）/ CSR 旧值（Zicsr）
+    // rd 写回数据源：ALU 结果 / PC+4（JAL/JALR）/ CSR 旧值（Zicsr）/ 向量配置结果
     typedef enum logic [1:0] {
         RD_FROM_ALU       = 2'd0,
         RD_FROM_PC_PLUS_4 = 2'd1,
-        RD_FROM_CSR       = 2'd2
+        RD_FROM_CSR       = 2'd2,
+        RD_FROM_VECTOR    = 2'd3
     } RD_SRC;
 
     // 跳转类型

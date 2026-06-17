@@ -56,6 +56,7 @@ module Decoder (
     u7  opcode_w;
     logic is_decoded;
     logic is_vector_alu_decoded;
+    logic is_vector_mem_decoded;
 
     assign opcode_w = inst[6:0];
     assign funct3   = inst[14:12];
@@ -68,8 +69,11 @@ module Decoder (
                                  && !v_decode.illegal
                                  && (v_decode.op_class == V_CLASS_ALU)
                                  && (v_decode.alu_op != V_ALU_NONE);
+    assign is_vector_mem_decoded = v_decode.valid
+                                 && !v_decode.illegal
+                                 && ((v_decode.op_class == V_CLASS_LOAD) || (v_decode.op_class == V_CLASS_STORE));
 
-    assign rd_addr  = (opcode_w == OP_STORE || opcode_w == OP_BRANCH || is_ecall || is_mret || is_vector_alu_decoded) ? 5'b0 : inst[11:7];
+    assign rd_addr  = (opcode_w == OP_STORE || opcode_w == OP_BRANCH || is_ecall || is_mret || is_vector_alu_decoded || is_vector_mem_decoded) ? 5'b0 : inst[11:7];
     assign rs1_addr = (is_ecall || is_mret) ? 5'b0 : inst[19:15];
     assign rs2_addr = (is_ecall || is_mret) ? 5'b0 : inst[24:20];
 
@@ -309,6 +313,15 @@ module Decoder (
                     && (v_decode.op_class == V_CLASS_ALU)
                     && (v_decode.alu_op != V_ALU_NONE)) begin
                     is_decoded = 1'b1;
+                end else if (v_decode.valid
+                    && !v_decode.illegal
+                    && ((v_decode.op_class == V_CLASS_LOAD) || (v_decode.op_class == V_CLASS_STORE))
+                    && (v_decode.width == 3'b111)
+                    && (v_decode.mop == 2'b00)
+                    && (v_decode.nf == 3'b000)) begin
+                    alu_op_code = ADD;
+                    is_op2_imm  = 1'b1;
+                    is_decoded  = 1'b1;
                 end else begin
                     is_decoded = 1'b0;
                 end

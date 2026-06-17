@@ -45,7 +45,8 @@ module Control_Unit (
     logic req_global_stall;
     assign req_global_stall = !if_2_ctrl.is_inst_ready
                             || !is_mem_ready
-                            || ex_2_ctrl.is_alu_busy;
+                            || ex_2_ctrl.is_alu_busy
+                            || mem_2_ctrl.is_vmem_busy;
 
     // load-use 冒险：EX 位是 load，且其 rd 与 ID 位消费者 rs1/rs2 匹配（rd != 0）
     logic load_use_hazard;
@@ -75,22 +76,30 @@ module Control_Unit (
 
     // 向量寄存器暂不做 forward；ID 读源命中 EX/MEM 中的向量写者时冻结。
     logic vector_raw_hazard;
-    assign vector_raw_hazard = id_2_ctrl.is_vector_alu
+    assign vector_raw_hazard = (id_2_ctrl.is_vector_alu || id_2_ctrl.is_vector_mem)
                              && (  (ex_2_ctrl.is_vwrite
                                     && (  (id_2_ctrl.v_uses_vs1 && (ex_2_ctrl.v_rd_addr == id_2_ctrl.vs1_addr))
                                        || (ex_2_ctrl.v_rd_addr == id_2_ctrl.vs2_addr)
                                        || (ex_2_ctrl.v_rd_addr == id_2_ctrl.vd_addr)
+                                       || (id_2_ctrl.v_uses_vs3 && (ex_2_ctrl.v_rd_addr == id_2_ctrl.vs3_addr))
                                        || (id_2_ctrl.v_uses_mask && (ex_2_ctrl.v_rd_addr == 5'b0))))
                                 || (mem_2_ctrl.is_vwrite
                                     && (  (id_2_ctrl.v_uses_vs1 && (mem_2_ctrl.v_rd_addr == id_2_ctrl.vs1_addr))
                                        || (mem_2_ctrl.v_rd_addr == id_2_ctrl.vs2_addr)
                                        || (mem_2_ctrl.v_rd_addr == id_2_ctrl.vd_addr)
+                                       || (id_2_ctrl.v_uses_vs3 && (mem_2_ctrl.v_rd_addr == id_2_ctrl.vs3_addr))
                                        || (id_2_ctrl.v_uses_mask && (mem_2_ctrl.v_rd_addr == 5'b0)))));
+
+    // vset* 更新 vl/vtype/vstart，后续向量指令在 ID 段直接读取这些状态。
+    // 若 vset* 仍在 EX/MEM 中，需要等到 WB 同拍旁路可见后再让消费者进入 ID/EX。
+    logic vector_state_hazard;
+    assign vector_state_hazard = (id_2_ctrl.is_vector_alu || id_2_ctrl.is_vector_mem)
+                               && (ex_2_ctrl.is_vcsr_write || mem_2_ctrl.is_vcsr_write);
 
     // IF / ID 冻结；EX / MEM / WB 正常推进让 load / 写者自己走到 MEM/WB 出口
     // 切面 B：数据冒险
     logic req_data_stall;
-    assign req_data_stall = load_use_hazard || id_direct_rs_hazard || vector_raw_hazard;
+    assign req_data_stall = load_use_hazard || id_direct_rs_hazard || vector_raw_hazard || vector_state_hazard;
 
     // 切面 C/D：控制冒险与特权重定向
     logic req_branch_flush;

@@ -45,6 +45,7 @@ module ID_Stage (
     output ID_2_EX   id_2_ex,
     output ID_2_FWD  id_2_fwd,
     output ID_2_VEX  id_2_vex,
+    output ID_2_VMEM id_2_vmem,
     output CSR_WRITE csr_write,        // CSR 写请求 ID/EX 寄存器输出，随流水线透传到 WB
     output V_WRITE   vcsr_write,       // vset* 写请求，随流水线透传到 WB
     output u64       gpr [0:31],
@@ -275,6 +276,9 @@ module ID_Stage (
     logic dec_is_vset_imm;
     logic dec_is_vset_rs2;
     logic dec_vector_state_illegal;
+    logic dec_is_vmem_load;
+    logic dec_is_vmem_store;
+    logic dec_is_vmem;
 
     assign dec_is_vset     = dec_v_decode.valid
                            && (dec_v_decode.op_class == V_CLASS_CONFIG)
@@ -284,7 +288,18 @@ module ID_Stage (
     assign dec_is_valusize = dec_v_decode.valid
                           && (dec_v_decode.op_class == V_CLASS_ALU)
                           && (dec_v_decode.alu_op != V_ALU_NONE);
-    assign dec_vector_state_illegal = dec_is_valusize && v_state.vtype[63];
+    assign dec_is_vmem_load  = dec_v_decode.valid
+                             && (dec_v_decode.op_class == V_CLASS_LOAD)
+                             && (dec_v_decode.width == 3'b111)
+                             && (dec_v_decode.mop == 2'b00)
+                             && (dec_v_decode.nf == 3'b000);
+    assign dec_is_vmem_store = dec_v_decode.valid
+                             && (dec_v_decode.op_class == V_CLASS_STORE)
+                             && (dec_v_decode.width == 3'b111)
+                             && (dec_v_decode.mop == 2'b00)
+                             && (dec_v_decode.nf == 3'b000);
+    assign dec_is_vmem = dec_is_vmem_load || dec_is_vmem_store;
+    assign dec_vector_state_illegal = (dec_is_valusize || dec_is_vmem) && v_state.vtype[63];
 
     always_comb begin
         vset_vtype_raw = 64'b0;
@@ -336,6 +351,7 @@ module ID_Stage (
             id_2_ex   <= '0;
             id_2_fwd  <= '0;
             id_2_vex  <= '0;
+            id_2_vmem <= '0;
             csr_write <= '0;
             vcsr_write <= '0;
         end else if (insert_bubble) begin
@@ -344,6 +360,7 @@ module ID_Stage (
             id_2_ex   <= '0;
             id_2_fwd  <= '0;
             id_2_vex  <= '0;
+            id_2_vmem <= '0;
             csr_write <= '0;
             vcsr_write <= '0;
         end else if (!stall) begin
@@ -401,6 +418,14 @@ module ID_Stage (
             id_2_vex.mask_data       <= vrf_mask_data;
             id_2_vex.scalar_rs1_data <= rf_read_data_1;
 
+            id_2_vmem.valid      <= dec_is_vmem && !v_state.vtype[63];
+            id_2_vmem.is_load    <= dec_is_vmem_load;
+            id_2_vmem.is_store   <= dec_is_vmem_store;
+            id_2_vmem.vd         <= dec_v_decode.vd;
+            id_2_vmem.vs3        <= dec_v_decode.vd;
+            id_2_vmem.state      <= v_state;
+            id_2_vmem.store_data <= vrf_vd_old_data;
+
             csr_write.write_en   <= csr_req_write_en;
             csr_write.write_addr <= dec_csr_addr;
             csr_write.write_data <= csr_req_write_data;
@@ -422,11 +447,14 @@ module ID_Stage (
     assign id_2_ctrl.is_vset_imm = dec_is_vset_imm;
     assign id_2_ctrl.is_vset_rs2 = dec_is_vset_rs2;
     assign id_2_ctrl.is_vector_alu = dec_is_valusize;
+    assign id_2_ctrl.is_vector_mem = dec_is_vmem;
     assign id_2_ctrl.is_vector_vx = dec_is_valusize && (dec_v_decode.format == V_FMT_VX);
     assign id_2_ctrl.v_uses_vs1 = dec_is_valusize && (dec_v_decode.format == V_FMT_VV);
     assign id_2_ctrl.v_uses_mask = dec_is_valusize && !dec_v_decode.vm;
+    assign id_2_ctrl.v_uses_vs3 = dec_is_vmem_store;
     assign id_2_ctrl.vs1_addr = dec_v_decode.vs1;
     assign id_2_ctrl.vs2_addr = dec_v_decode.vs2;
     assign id_2_ctrl.vd_addr = dec_v_decode.vd;
+    assign id_2_ctrl.vs3_addr = dec_v_decode.vd;
 
 endmodule

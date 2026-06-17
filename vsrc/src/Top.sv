@@ -63,6 +63,8 @@ module Top (
     ID_2_EX   id_2_ex;
     ID_2_FWD  id_2_fwd;
     ID_2_CTRL id_2_ctrl;
+    ID_2_VEX  id_2_vex;
+    ID_2_VMEM id_2_vmem;
 
     INST_CTX  ex_inst_ctx;
     TRAP_CTX  ex_trap_ctx;
@@ -77,7 +79,6 @@ module Top (
     MEM_2_CTRL mem_2_ctrl;
 
     FWD_2_EX  fwd_2_ex;
-    ID_2_VEX  id_2_vex;
 
     WB_2_ID   wb_2_id;
     CSR_WRITE wb_2_csr;
@@ -267,6 +268,7 @@ module Top (
         .id_2_ex       ( id_2_ex ),
         .id_2_fwd      ( id_2_fwd ),
         .id_2_vex      ( id_2_vex ),
+        .id_2_vmem     ( id_2_vmem ),
         .csr_write     ( id_csr_write ),
         .vcsr_write    ( id_vcsr_write ),
         .gpr           ( gpr_o ),
@@ -287,6 +289,7 @@ module Top (
         .trap_ctx_in     ( id_trap_ctx ),
         .id_2_ex         ( id_2_ex ),
         .id_2_vex        ( id_2_vex ),
+        .id_2_vmem       ( id_2_vmem ),
         .fwd_2_ex        ( fwd_2_ex ),
         .csr_write_in    ( id_csr_write ),
         .vcsr_write_in   ( id_vcsr_write ),

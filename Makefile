@@ -94,6 +94,9 @@ test-labplus-3: sim
 test-labplus-4: sim
 	TEST=all ./build/emu --no-diff -i ./ready-to-run/lab+/4/all-test-privfull.bin $(VOPT) || true
 
+test-rvv-basic: sim
+	TEST=rvv ./build/emu --no-diff -C 20000 -i ./ready-to-run/rvv/rvv-basic.bin $(VOPT) || true
+
 clean:
 	rm -rf build
 

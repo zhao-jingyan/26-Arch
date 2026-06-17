@@ -87,6 +87,7 @@ package top_pkg;
         u64 rs2_data;    // store 用，原样透传
         AMO_OP amo_op;   // A 扩展原子操作类型
         VEX_2_VWB vex_2_vwb; // 向量执行结果，随流水线到 WB 写回 VectorRegFile
+        ID_2_VMEM vmem;
     } EX_2_MEM;
 
     // MEM → WB：MEM 末尾流水寄存器的业务输出
@@ -134,12 +135,15 @@ package top_pkg;
         logic is_vset_imm;
         logic is_vset_rs2;  // 仅 vsetvl 需要从 rs2 读取 vtype
         logic is_vector_alu;
+        logic is_vector_mem;
         logic is_vector_vx;
         logic v_uses_vs1;
         logic v_uses_mask;
+        logic v_uses_vs3;
         u5    vs1_addr;
         u5    vs2_addr;
         u5    vd_addr;
+        u5    vs3_addr;
     } ID_2_CTRL;
 
     // EX → 控制层：供 load-use 检测的 EX 位当前指令信息（组合，源自 ID/EX 寄存器输出）
@@ -150,6 +154,8 @@ package top_pkg;
         logic is_alu_busy;  // ALU 多周期单元（乘除法）正在运行
         logic is_vwrite;    // EX 位指令是否将在 WB 写向量寄存器
         u5    v_rd_addr;
+        logic is_vcsr_write; // EX 位指令是否将在 WB 写向量状态
+        logic is_vmem_busy;
     } EX_2_CTRL;
 
     // MEM → 控制层：供 CSR rs1 hazard 检测（组合，源自 EX/MEM 寄存器输出）
@@ -158,6 +164,8 @@ package top_pkg;
         logic is_atomic_busy; // 原子访存正在 MEM 多拍执行，延迟中断投递
         logic is_vwrite;      // MEM 位指令是否将在 WB 写向量寄存器
         u5    v_rd_addr;
+        logic is_vcsr_write;  // MEM 位指令是否将在 WB 写向量状态
+        logic is_vmem_busy;
     } MEM_2_CTRL;
 
     // CSRFile 快照：从 ID Stage CSRFile 一路透传到 core.sv 供 Difftest 比对

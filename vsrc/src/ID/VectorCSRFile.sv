@@ -38,9 +38,10 @@ module VectorCSRFile (
         end
     end
 
-    assign state.vl     = vl;
-    assign state.vtype  = vtype;
-    assign state.vstart = vstart;
+    // vset* 写回与下一条向量指令 ID 读状态可能同拍，读端做写优先旁路。
+    assign state.vl     = write.write_en ? write.vl     : vl;
+    assign state.vtype  = write.write_en ? write.vtype  : vtype;
+    assign state.vstart = write.write_en ? write.vstart : vstart;
     assign state.vxrm   = vxrm;
     assign state.vxsat  = vxsat;
     assign state.vcsr   = {61'b0, vxrm[1:0], vxsat[0]};

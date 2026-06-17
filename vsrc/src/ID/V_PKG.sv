@@ -125,6 +125,16 @@ package V_PKG;
         vreg_t result;
     } VEX_2_VWB;
 
+    typedef struct packed {
+        logic  valid;
+        logic  is_load;
+        logic  is_store;
+        u5     vd;
+        u5     vs3;
+        V_STATE state;
+        vreg_t store_data;
+    } ID_2_VMEM;
+
 endpackage
 
 `endif

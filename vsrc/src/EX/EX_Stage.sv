@@ -33,6 +33,7 @@ module EX_Stage (
     input  TRAP_CTX  trap_ctx_in,
     input  ID_2_EX   id_2_ex,
     input  ID_2_VEX  id_2_vex,
+    input  ID_2_VMEM id_2_vmem,
     input  FWD_2_EX  fwd_2_ex,
     input  CSR_WRITE csr_write_in,
     input  V_WRITE   vcsr_write_in,
@@ -167,6 +168,7 @@ module EX_Stage (
             ex_2_mem.rs2_data   <= fwd_2_ex.rs2_data;
             ex_2_mem.amo_op     <= id_2_ex.amo_op;
             ex_2_mem.vex_2_vwb  <= vex_2_vwb_w;
+            ex_2_mem.vmem       <= id_2_vmem;
             csr_write_out       <= csr_write_in;
             vcsr_write_out      <= vcsr_write_in;
         end
@@ -184,5 +186,7 @@ module EX_Stage (
     assign ex_2_ctrl.is_alu_busy = is_alu_busy;
     assign ex_2_ctrl.is_vwrite   = id_2_vex.valid;
     assign ex_2_ctrl.v_rd_addr   = id_2_vex.vd;
+    assign ex_2_ctrl.is_vcsr_write = vcsr_write_in.write_en;
+    assign ex_2_ctrl.is_vmem_busy = id_2_vmem.valid;
 
 endmodule

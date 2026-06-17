@@ -79,6 +79,21 @@ package V_PKG;
         u11      vtypei;       // vsetvli/vsetivli 立即数字段
     } V_DECODE;
 
+    // 向量语义收敛结果：把 vset*、向量执行/访存分类和状态合法性集中表达。
+    typedef struct packed {
+        logic is_vset;
+        logic is_vset_imm;
+        logic is_vset_rs2;
+        logic is_vmem_load;
+        logic is_vmem_store;
+        logic is_vmem;
+        logic is_valusize;
+        logic vector_state_illegal;
+        logic v_req_write_en;
+        u64   v_req_vl;
+        u64   v_req_vtype;
+    } V_SEMANTICS;
+
     typedef struct packed {
         u64 vl;
         u64 vtype;

@@ -243,7 +243,7 @@ module ID_Stage (
     function automatic u64 calc_vlmax(input u3 vsew, input u3 vlmul);
         u64 base_elems;
         begin
-            base_elems = VLEN_BITS >> (vsew + 3);
+            base_elems = u64'(VLEN_BITS) >> (vsew + 3);
             unique case (vlmul)
                 3'b000: calc_vlmax = base_elems;
                 3'b001: calc_vlmax = base_elems << 1;

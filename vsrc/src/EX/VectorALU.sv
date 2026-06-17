@@ -123,7 +123,7 @@ module VectorALU (
                     default:   res = lhs & mask_value;
                 endcase
 
-                if ((i < id_2_vex.state.vl) && (id_2_vex.vm || id_2_vex.mask_data[i])) begin
+                if ((u64'(i) < id_2_vex.state.vl) && (id_2_vex.vm || id_2_vex.mask_data[i])) begin
                     result_w = write_elem(result_w, i, sew_bits, res);
                 end
             end

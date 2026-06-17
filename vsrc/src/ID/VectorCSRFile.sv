@@ -44,6 +44,6 @@ module VectorCSRFile (
     assign state.vxrm   = vxrm;
     assign state.vxsat  = vxsat;
     assign state.vcsr   = {61'b0, vxrm[1:0], vxsat[0]};
-    assign state.vlenb  = VLEN_BYTES;
+    assign state.vlenb  = u64'(VLEN_BYTES);
 
 endmodule

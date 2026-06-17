@@ -22,6 +22,7 @@ module Control_Unit (
     input  ID_2_CTRL  id_2_ctrl,
     input  EX_2_CTRL  ex_2_ctrl,
     input  MEM_2_CTRL mem_2_ctrl,
+    input  SCOREBOARD_2_CTRL scoreboard_2_ctrl,
     input  logic      is_mem_ready,
 
     input  logic      ex_pc_should_jump,
@@ -48,32 +49,6 @@ module Control_Unit (
                             || ex_2_ctrl.is_alu_busy
                             || mem_2_ctrl.is_vmem_busy;
 
-    // load-use 冒险：EX 位是 load，且其 rd 与 ID 位消费者 rs1/rs2 匹配（rd != 0）
-    logic load_use_hazard;
-    assign load_use_hazard = ex_2_ctrl.is_ex_load
-                          && (ex_2_ctrl.rd_addr != 5'b0)
-                          && (  (ex_2_ctrl.rd_addr == id_2_ctrl.rs1_addr)
-                             || (ex_2_ctrl.rd_addr == id_2_ctrl.rs2_addr));
-
-    // CSR / vset* 在 ID 段直接读取源寄存器，不能依赖 EX forward。
-    // ID 位源寄存器若命中 EX 或 MEM 槽的 in-flight 写者，需要冻结到写者进入 WB。
-    // distance-3（WB 槽）由 RegFile 内部 write-during-read bypass 覆盖，无需 stall
-    logic id_direct_rs_hazard;
-    logic id_direct_uses_rs1;
-    logic id_direct_uses_rs2;
-    assign id_direct_uses_rs1 = (id_2_ctrl.is_csr && !id_2_ctrl.is_csr_imm)
-                             || (id_2_ctrl.is_vset && !id_2_ctrl.is_vset_imm)
-                             || id_2_ctrl.is_vector_vx;
-    assign id_direct_uses_rs2 = id_2_ctrl.is_vset_rs2;
-    assign id_direct_rs_hazard = (  id_direct_uses_rs1
-                                 && (id_2_ctrl.rs1_addr != 5'b0)
-                                 && (  (ex_2_ctrl.rd_addr  != 5'b0 && ex_2_ctrl.rd_addr  == id_2_ctrl.rs1_addr)
-                                    || (mem_2_ctrl.rd_addr != 5'b0 && mem_2_ctrl.rd_addr == id_2_ctrl.rs1_addr)))
-                              || (  id_direct_uses_rs2
-                                 && (id_2_ctrl.rs2_addr != 5'b0)
-                                 && (  (ex_2_ctrl.rd_addr  != 5'b0 && ex_2_ctrl.rd_addr  == id_2_ctrl.rs2_addr)
-                                    || (mem_2_ctrl.rd_addr != 5'b0 && mem_2_ctrl.rd_addr == id_2_ctrl.rs2_addr)));
-
     // 向量寄存器暂不做 forward；ID 读源命中 EX/MEM 中的向量写者时冻结。
     logic vector_raw_hazard;
     assign vector_raw_hazard = (id_2_ctrl.is_vector_alu || id_2_ctrl.is_vector_mem)
@@ -99,7 +74,10 @@ module Control_Unit (
     // IF / ID 冻结；EX / MEM / WB 正常推进让 load / 写者自己走到 MEM/WB 出口
     // 切面 B：数据冒险
     logic req_data_stall;
-    assign req_data_stall = load_use_hazard || id_direct_rs_hazard || vector_raw_hazard || vector_state_hazard;
+    assign req_data_stall = scoreboard_2_ctrl.gpr_raw_hazard
+                          || scoreboard_2_ctrl.id_direct_rs_hazard
+                          || vector_raw_hazard
+                          || vector_state_hazard;
 
     // 切面 C/D：控制冒险与特权重定向
     logic req_branch_flush;

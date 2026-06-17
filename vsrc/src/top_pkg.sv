@@ -168,6 +168,13 @@ package top_pkg;
         logic is_vmem_busy;
     } MEM_2_CTRL;
 
+    // Scoreboard → 控制层：集中表达整数 GPR 的等待关系。
+    // 当前仍保持五段顺序提交；scoreboard 先收敛 load/AMO、乘除法和 ID 直读源的阻塞条件。
+    typedef struct packed {
+        logic gpr_raw_hazard;       // ID 位 rs 命中当前不可转发的整数写者
+        logic id_direct_rs_hazard;  // CSR/vset/vector-vx 这类 ID 直读源命中 EX/MEM 写者
+    } SCOREBOARD_2_CTRL;
+
     // CSRFile 快照：从 ID Stage CSRFile 一路透传到 core.sv 供 Difftest 比对
     // 仅包含 DifftestCSRState 关心的 9 个 CSR；mcycle / mhartid 不在 Difftest 字段表内
     typedef struct packed {

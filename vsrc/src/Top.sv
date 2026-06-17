@@ -18,6 +18,7 @@
 `include "src/CTRL/Forward_Unit.sv"
 `include "src/CTRL/Privilege_Unit.sv"
 `include "src/CTRL/Interrupt_Unit.sv"
+`include "src/CTRL/Scoreboard_Unit.sv"
 `endif
 
 import common::*;
@@ -130,6 +131,14 @@ module Top (
     logic pc_should_jump;
     u64   pc_jump_address;
     logic wb_commit_valid;
+    SCOREBOARD_2_CTRL scoreboard_2_ctrl;
+
+    Scoreboard_Unit u_scoreboard (
+        .id_2_ctrl          ( id_2_ctrl ),
+        .ex_2_ctrl          ( ex_2_ctrl ),
+        .mem_2_ctrl         ( mem_2_ctrl ),
+        .scoreboard_2_ctrl  ( scoreboard_2_ctrl )
+    );
 
     Forward_Unit u_fwd (
         .id_2_fwd  ( id_2_fwd ),
@@ -144,6 +153,7 @@ module Top (
         .id_2_ctrl          ( id_2_ctrl ),
         .ex_2_ctrl          ( ex_2_ctrl ),
         .mem_2_ctrl         ( mem_2_ctrl ),
+        .scoreboard_2_ctrl  ( scoreboard_2_ctrl ),
         .is_mem_ready       ( is_mem_ready ),
 
         .ex_pc_should_jump  ( ex_pc_should_jump ),

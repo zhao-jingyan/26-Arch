@@ -14,6 +14,7 @@
 `include "src/EX/EX_Stage.sv"
 `include "src/MEM/MEM_Stage.sv"
 `include "src/WB/WB_Stage.sv"
+`include "src/WB/Commit_Unit.sv"
 `include "src/CTRL/Control_Unit.sv"
 `include "src/CTRL/Forward_Unit.sv"
 `include "src/CTRL/Privilege_Unit.sv"
@@ -369,43 +370,22 @@ module Top (
         .wb_trap_event   ( wb_trap_event )
     );
 
-    // ------------------------------------------------------------------------
-    // Commit / Difftest：MEM/WB 寄存器出口 + 1-cycle prev 比较
-    //   prev_* 同步 MEM/WB 输出；commit_valid 当且仅当 MEM/WB 发生推进时拉高
-    //   commit_pc/_instr/_wen/_wdest/_wdata 报告"上一拍已经进入 RF 的指令"
-    // ------------------------------------------------------------------------
-    INST_CTX prev_inst_ctx;
-    MEM_2_WB prev_mem_2_wb;
+    // 提交收敛：把 MEM/WB 边界、commit 判定和 Difftest 对账统一收口
+    Commit_Unit u_commit (
+        .clk             ( clk ),
+        .rst_n           ( rst_n ),
+        .mem_inst_ctx    ( mem_inst_ctx ),
+        .mem_2_wb        ( mem_2_wb ),
 
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            prev_inst_ctx <= '0;
-            prev_mem_2_wb <= '0;
-        end
-        else begin
-            prev_inst_ctx <= mem_inst_ctx;
-            prev_mem_2_wb <= mem_2_wb;
-        end
-    end
-
-    assign wb_commit_valid = (mem_inst_ctx.inst != 32'b0)
-                           && ((mem_inst_ctx.pc_inst_address != prev_inst_ctx.pc_inst_address)
-                               || (mem_inst_ctx.inst            != prev_inst_ctx.inst));
-    assign commit_valid_o  = (prev_inst_ctx.inst != 32'b0)
-                           && ((mem_inst_ctx.pc_inst_address != prev_inst_ctx.pc_inst_address)
-                               || (mem_inst_ctx.inst            != prev_inst_ctx.inst));
-    assign commit_pc_o    = prev_inst_ctx.pc_inst_address;
-    assign commit_instr_o = prev_inst_ctx.inst;
-    assign commit_wen_o   = (prev_inst_ctx.rd_addr != 5'b0);
-    assign commit_wdest_o = {3'b0, prev_inst_ctx.rd_addr};
-    assign commit_wdata_o = prev_mem_2_wb.rd_data;
-    assign commit_sc_failed_o = prev_mem_2_wb.sc_failed;
-
-    // Difftest skip：提交指令为 load/store 且访存地址 bit31 == 0（外设 MMIO 区）
-    logic commit_is_mem;
-    assign commit_is_mem = (prev_inst_ctx.opcode == OP_LOAD)
-                        || (prev_inst_ctx.opcode == OP_STORE)
-                        || (prev_inst_ctx.opcode == OP_AMO);
-    assign commit_skip_o = commit_is_mem && (prev_mem_2_wb.mem_addr[31] == 1'b0);
+        .wb_commit_valid ( wb_commit_valid ),
+        .commit_valid_o  ( commit_valid_o ),
+        .commit_pc_o     ( commit_pc_o ),
+        .commit_instr_o  ( commit_instr_o ),
+        .commit_wen_o    ( commit_wen_o ),
+        .commit_wdest_o  ( commit_wdest_o ),
+        .commit_wdata_o  ( commit_wdata_o ),
+        .commit_sc_failed_o ( commit_sc_failed_o ),
+        .commit_skip_o   ( commit_skip_o )
+    );
 
 endmodule

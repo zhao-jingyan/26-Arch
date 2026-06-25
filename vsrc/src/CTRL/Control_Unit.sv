@@ -4,10 +4,10 @@
 //               pipeline_stall = !is_inst_ready || !is_mem_ready，对全流水均匀施加
 //               load_use_hazard：EX 位 load.rd 与 ID 位消费者 rs1/rs2 匹配
 //                 → 冻结 IF/ID、在 ID/EX 寄存器注入 bubble；EX/MEM/WB 正常推进
-//               ex_pc_should_jump（branch/jalr/jal 在 EX 段决出）：
+//               ex_pc_should_jump（EX 段发现预测错误或遇到未预测跳转）：
 //                 → 清空 IF/ID（已 speculative 取的下一拍指令）
 //                 → 在 ID/EX 注入 bubble（已 decode 的 wrong-path 指令）
-//                 → PC 重定向到 ex_pc_jump_address
+//                 → PC 重定向到正确的下一条 PC
 // ----------------------------------------------------------------------------
 
 `ifdef VERILATOR
@@ -83,7 +83,7 @@ module Control_Unit (
     logic req_branch_flush;
     logic req_trap_flush;
     assign req_branch_flush = ex_pc_should_jump;
-    assign req_trap_flush   = priv_2_ctrl.is_trap_fire || priv_2_ctrl.is_mret_fire;
+    assign req_trap_flush   = priv_2_ctrl.is_trap_fire || priv_2_ctrl.is_mret_fire || priv_2_ctrl.is_sret_fire;
 
     assign stall_if  = req_global_stall || req_data_stall;
     assign stall_id  = req_global_stall || req_data_stall;
@@ -91,26 +91,26 @@ module Control_Unit (
     assign stall_mem = req_global_stall;
 
     // ID/EX bubble：trap/mret 已在 WB 提交，可优先清 younger 指令；
-    // EX 段 branch/jal 只有在流水线可推进时才能清 ID/EX，避免把跳转指令自身冲掉
+    // EX 段错预测只有在流水线可推进时才能清 ID/EX，避免把 EX 位指令自身冲掉
     assign insert_bubble = req_trap_flush
                          || ((req_data_stall || req_branch_flush) && !req_global_stall);
 
-    // IF/ID flush：仅在跳转命中时清掉 speculative 取的下一拍指令
+    // IF/ID flush：仅在错预测时清掉 speculative 取的下一拍指令
     // load-use / csr-rs1 不能 flush（IF/ID 里那条正是要保留、下拍重走的消费者）
     assign flush_if_id = req_trap_flush || (req_branch_flush && !req_global_stall);
 
     assign flush_ex  = req_trap_flush;
     assign flush_mem = req_trap_flush;
 
-    // PC mux 优先级：trap > mret > branch > 顺序
+    // PC mux 优先级：trap > mret > 错预测重定向 > 顺序
     always_comb begin
         if (priv_2_ctrl.is_trap_fire) begin
             pc_should_jump  = 1'b1;
             pc_jump_address = priv_2_ctrl.trap_vector;
         end
-        else if (priv_2_ctrl.is_mret_fire) begin
+        else if (priv_2_ctrl.is_mret_fire || priv_2_ctrl.is_sret_fire) begin
             pc_should_jump  = 1'b1;
-            pc_jump_address = priv_2_ctrl.mepc_value;
+            pc_jump_address = priv_2_ctrl.ret_pc_value;
         end
         else begin
             pc_should_jump  = req_branch_flush && !req_global_stall;

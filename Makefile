@@ -46,6 +46,10 @@ emu:
 
 export NOOP_HOME=$(abspath .)
 export NEMU_HOME=$(abspath ./ready-to-run)
+XV6_HOME ?= $(abspath ./third_party/xv6-riscv)
+XV6_OUT  := $(abspath ./ready-to-run/xv6)
+XV6_PATCH ?= $(abspath ./ready-to-run/xv6/xv6-platform.patch)
+RISCV_OBJCOPY ?= $(shell command -v riscv64-elf-objcopy 2>/dev/null || command -v riscv64-unknown-elf-objcopy 2>/dev/null || echo riscv64-unknown-elf-objcopy)
 
 REF_NEMU := riscv64-nemu-interpreter-so
 ifeq ($(shell uname -s),Darwin)
@@ -84,6 +88,26 @@ test-lab5-extra: sim
 
 test-lab6: sim
 	TEST=sys ./build/emu --no-diff -i ./ready-to-run/lab6/lab6-test.bin $(VOPT) || true
+
+xv6-build-image:
+	@test -d "$(XV6_HOME)" || (echo "Please set XV6_HOME=/path/to/xv6-riscv or place it at ./third_party/xv6-riscv"; exit 1)
+	@mkdir -p "$(XV6_OUT)"
+	@if [ -f "$(XV6_PATCH)" ]; then \
+		echo "Applying xv6 platform patch: $(XV6_PATCH)"; \
+		(cd "$(XV6_HOME)" && git apply --check "$(XV6_PATCH)" && git apply "$(XV6_PATCH)") \
+		  || echo "xv6 platform patch was not applied; assuming it is already present"; \
+	fi
+	$(MAKE) -C "$(XV6_HOME)" clean
+	$(MAKE) -C "$(XV6_HOME)" kernel/kernel fs.img
+	cp "$(XV6_HOME)/kernel/kernel" "$(XV6_OUT)/kernel.elf"
+	"$(RISCV_OBJCOPY)" -O binary "$(XV6_HOME)/kernel/kernel" "$(XV6_OUT)/kernel.bin"
+	cp "$(XV6_HOME)/fs.img" "$(XV6_OUT)/fs.img"
+
+test-xv6-kernel: sim
+	TEST=xv6 ./build/emu --no-diff -i ./ready-to-run/xv6/kernel.bin $(VOPT) || true
+
+test-xv6-shell: sim
+	TEST=xv6 ./build/emu --no-diff -i ./ready-to-run/xv6/kernel.bin --sdcard-image=$(XV6_OUT)/fs.img $(VOPT) || true
 
 test-labplus-2: sim
 	TEST=$(TEST) ./build/emu --diff $(REF_SO) -i ./ready-to-run/lab+/2/microbench-riscv64-nutshell.bin $(VOPT) || true

@@ -33,6 +33,9 @@ module mycpu_top
   assign addr = oreq.addr;
   assign wdata = oreq.data;
   assign oresp.data = rdata;
+  assign oresp.exc_valid = 1'b0;
+  assign oresp.exc_cause = 64'b0;
+  assign oresp.exc_tval = 64'b0;
   assign wstrobe = oreq.strobe;
   assign burst = oreq.burst;
   assign len = oreq.len;

@@ -33,6 +33,11 @@ package top_pkg;
     typedef struct packed {
         u32 inst;
         u64 pc_inst_address;
+        logic predicted_taken;
+        u64 predicted_target;
+        logic fetch_exc_valid;
+        u64   fetch_exc_cause;
+        u64   fetch_exc_tval;
     } IF_2_ID;
 
     // IF 对控制层反馈
@@ -46,12 +51,15 @@ package top_pkg;
         u32 inst;
         u5  rd_addr;  // S/B-type 已在 Decoder 清零
         u7  opcode;   // MEM 识别 load/store 用
+        logic predicted_taken;
+        u64 predicted_target;
     } INST_CTX;
 
     // 与 INST_CTX 并行透传的 trap / exception 上下文
     typedef struct packed {
         logic is_ecall;
         logic is_mret;
+        logic is_sret;
         logic exc_valid;
         u64   exc_cause;
         u64   exc_tval;
@@ -187,6 +195,15 @@ package top_pkg;
         u64 mtval;
         u64 mepc;
         u64 satp;
+        u64 stvec;
+        u64 sip;
+        u64 sie;
+        u64 sscratch;
+        u64 scause;
+        u64 stval;
+        u64 sepc;
+        u64 medeleg;
+        u64 mideleg;
     } CSR_STATE;
 
     // CSR 写请求（贯穿型 bundle）：ID 段算好后随流水线透传到 WB 段，
@@ -209,8 +226,9 @@ package top_pkg;
     typedef struct packed {
         logic is_trap_fire;
         logic is_mret_fire;
+        logic is_sret_fire;
         u64   trap_vector;
-        u64   mepc_value;
+        u64   ret_pc_value;
     } PRIV_2_CTRL;
 
 endpackage

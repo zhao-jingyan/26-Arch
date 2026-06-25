@@ -47,6 +47,7 @@ module Decoder (
 
     output logic       is_ecall,
     output logic       is_mret,
+    output logic       is_sret,
     output logic       is_illegal
 );
 
@@ -64,7 +65,7 @@ module Decoder (
     assign funct5   = inst[31:27];
 
     assign opcode   = opcode_w;
-    // S/B-type 与 ECALL/MRET 无架构 rd/rs 副作用，Decoder 内部清零
+    // S/B-type 与 ECALL/MRET/SRET 无架构 rd/rs 副作用，Decoder 内部清零
     assign is_vector_alu_decoded = v_decode.valid
                                  && !v_decode.illegal
                                  && (v_decode.op_class == V_CLASS_ALU)
@@ -73,9 +74,9 @@ module Decoder (
                                  && !v_decode.illegal
                                  && ((v_decode.op_class == V_CLASS_LOAD) || (v_decode.op_class == V_CLASS_STORE));
 
-    assign rd_addr  = (opcode_w == OP_STORE || opcode_w == OP_BRANCH || is_ecall || is_mret || is_vector_alu_decoded || is_vector_mem_decoded) ? 5'b0 : inst[11:7];
-    assign rs1_addr = (is_ecall || is_mret) ? 5'b0 : inst[19:15];
-    assign rs2_addr = (is_ecall || is_mret) ? 5'b0 : inst[24:20];
+    assign rd_addr  = (opcode_w == OP_STORE || opcode_w == OP_BRANCH || is_ecall || is_mret || is_sret || is_vector_alu_decoded || is_vector_mem_decoded) ? 5'b0 : inst[11:7];
+    assign rs1_addr = (is_ecall || is_mret || is_sret) ? 5'b0 : inst[19:15];
+    assign rs2_addr = (is_ecall || is_mret || is_sret) ? 5'b0 : inst[24:20];
 
     // CSR 字段：地址固定取 inst[31:20]，uimm 取 inst[19:15]
     assign csr_addr = inst[31:20];
@@ -101,6 +102,7 @@ module Decoder (
         csr_op        = CSR_NONE;
         is_ecall      = 1'b0;
         is_mret       = 1'b0;
+        is_sret       = 1'b0;
         is_decoded    = 1'b0;
 
         unique case (opcode_w)
@@ -212,6 +214,11 @@ module Decoder (
                 is_decoded    = 1'b1;
             end
 
+            OP_MISC_MEM: begin
+                // fence / fence.i 只要求前后访存有序；当前五级流水为顺序提交，先作为合法 NOP。
+                is_decoded = 1'b1;
+            end
+
             OP_BRANCH: begin
                 jump_type = JT_BR;
                 unique case (funct3)
@@ -247,6 +254,7 @@ module Decoder (
                     3'b000: begin
                         unique case (inst[31:20])
                             FUNCT12_ECALL: begin is_ecall = 1'b1; is_decoded = 1'b1; end
+                            FUNCT12_SRET:  begin is_sret  = 1'b1; is_decoded = 1'b1; end
                             FUNCT12_MRET:  begin is_mret  = 1'b1; is_decoded = 1'b1; end
                             // sfence/fence/wfi 等：未实现但合法，当 NOP
                             default: begin

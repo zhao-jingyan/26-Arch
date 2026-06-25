@@ -103,8 +103,13 @@ module Top (
     u64         trap_mepc_next;
     u64         trap_mcause_next;
     u64         trap_mtval_next;
+    u64         trap_sepc_next;
+    u64         trap_scause_next;
+    u64         trap_stval_next;
     u64         mtvec_value;
     u64         mepc_value;
+    u64         stvec_value;
+    u64         sepc_value;
     u64         if_pc;
     u64         mip_hw;
     u64         mip_sw;
@@ -185,6 +190,8 @@ module Top (
         .mstatus    ( csr_state_o.mstatus ),
         .mip_sw     ( mip_sw ),
         .mie        ( csr_state_o.mie ),
+        .sie        ( csr_state_o.sie ),
+        .mideleg    ( csr_state_o.mideleg ),
         .priv_mode  ( priv_mode_o ),
         .if_pc      ( if_pc ),
         .if_2_id    ( if_2_id ),
@@ -194,6 +201,8 @@ module Top (
 
         .trap_write_en      ( trap_write_en ),
         .trap_mstatus_next  ( trap_mstatus_next ),
+        .ex_csr_write       ( ex_csr_write ),
+        .mem_csr_write      ( mem_csr_write ),
         .wb_csr_write       ( wb_2_csr ),
         .wb_commit_valid    ( wb_commit_valid ),
 
@@ -214,14 +223,23 @@ module Top (
         .mstatus             ( csr_state_o.mstatus ),
         .mcause              ( csr_state_o.mcause ),
         .mtval               ( csr_state_o.mtval ),
+        .scause              ( csr_state_o.scause ),
+        .stval               ( csr_state_o.stval ),
+        .medeleg             ( csr_state_o.medeleg ),
+        .mideleg             ( csr_state_o.mideleg ),
         .mtvec_value         ( mtvec_value ),
         .mepc_value          ( mepc_value ),
+        .stvec_value         ( stvec_value ),
+        .sepc_value          ( sepc_value ),
 
         .trap_write_en       ( trap_write_en ),
         .trap_mstatus_next   ( trap_mstatus_next ),
         .trap_mepc_next      ( trap_mepc_next ),
         .trap_mcause_next    ( trap_mcause_next ),
         .trap_mtval_next     ( trap_mtval_next ),
+        .trap_sepc_next      ( trap_sepc_next ),
+        .trap_scause_next    ( trap_scause_next ),
+        .trap_stval_next     ( trap_stval_next ),
 
         .priv_2_ctrl         ( priv_2_ctrl ),
         .priv_mode           ( priv_mode_o )
@@ -232,11 +250,13 @@ module Top (
             mmu_priv_mode = PRIV_M;
         else if (priv_2_ctrl.is_mret_fire)
             mmu_priv_mode = PRIV_MODE'(csr_state_o.mstatus[12:11]);
+        else if (priv_2_ctrl.is_sret_fire)
+            mmu_priv_mode = csr_state_o.mstatus[8] ? PRIV_S : PRIV_U;
         else
             mmu_priv_mode = priv_mode_o;
     end
     assign mmu_priv_mode_o = mmu_priv_mode;
-    assign kill_new_req    = priv_2_ctrl.is_trap_fire || priv_2_ctrl.is_mret_fire;
+    assign kill_new_req    = priv_2_ctrl.is_trap_fire || priv_2_ctrl.is_mret_fire || priv_2_ctrl.is_sret_fire;
 
     IF_Stage u_if (
         .clk             ( clk ),
@@ -271,6 +291,9 @@ module Top (
         .trap_mepc_next    ( trap_mepc_next ),
         .trap_mcause_next  ( trap_mcause_next ),
         .trap_mtval_next   ( trap_mtval_next ),
+        .trap_sepc_next    ( trap_sepc_next ),
+        .trap_scause_next  ( trap_scause_next ),
+        .trap_stval_next   ( trap_stval_next ),
         .mip_hw            ( mip_hw ),
 
         .inst_ctx      ( id_inst_ctx ),
@@ -286,7 +309,9 @@ module Top (
         .id_2_ctrl     ( id_2_ctrl ),
         .csr_state     ( csr_state_o ),
         .mtvec_value   ( mtvec_value ),
-        .mepc_value    ( mepc_value )
+        .mepc_value    ( mepc_value ),
+        .stvec_value   ( stvec_value ),
+        .sepc_value    ( sepc_value )
     );
 
     EX_Stage u_ex (
@@ -351,6 +376,9 @@ module Top (
     assign if_dbus_resp.addr_ok = ibus_resp_i.addr_ok;
     assign if_dbus_resp.data_ok = ibus_resp_i.data_ok;
     assign if_dbus_resp.data    = {ibus_resp_i.data, ibus_resp_i.data};
+    assign if_dbus_resp.exc_valid = ibus_resp_i.exc_valid;
+    assign if_dbus_resp.exc_cause = ibus_resp_i.exc_cause;
+    assign if_dbus_resp.exc_tval  = ibus_resp_i.exc_tval;
 
     assign dbus_req_o  = mem_dbus_req;
     assign mem_dbus_resp = dbus_resp_i;

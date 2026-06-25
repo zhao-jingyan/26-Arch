@@ -19,6 +19,7 @@ package ID_PKG;
     localparam logic [6:0] OP_JALR   = 7'b1100111;
     localparam logic [6:0] OP_LUI    = 7'b0110111;
     localparam logic [6:0] OP_AUIPC  = 7'b0010111;
+    localparam logic [6:0] OP_MISC_MEM = 7'b0001111;  // fence / fence.i，当前按流水线同步 NOP 处理
     localparam logic [6:0] OP_SYSTEM = 7'b1110011;
     localparam logic [6:0] OP_AMO    = 7'b0101111;
     localparam logic [6:0] OP_VECTOR_LOAD  = 7'b0000111;  // RVV vector load，与浮点 load 共用主 opcode
@@ -27,6 +28,7 @@ package ID_PKG;
 
     // SYSTEM/funct3=000 指令
     localparam logic [11:0] FUNCT12_ECALL = 12'h000;
+    localparam logic [11:0] FUNCT12_SRET  = 12'h102;
     localparam logic [11:0] FUNCT12_MRET  = 12'h302;
 
     // funct7 关键编码

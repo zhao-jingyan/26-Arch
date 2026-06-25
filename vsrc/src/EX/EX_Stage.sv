@@ -125,18 +125,28 @@ module EX_Stage (
     logic jalr_misalign;
     assign jalr_misalign = (id_2_ex.jump_type == JT_JALR) && (jump_target[1:0] != 2'b00);
 
-    // 跳转判定组合直出
-    // JT_CSR 走"永远预测失败"语义，无条件拉高让 Control_Unit 触发 flush + PC 重定向到 pc+4
+    // 实际下一条 PC；预测命中时不再触发 flush，只有错预测才重定向。
+    logic actual_taken;
+    u64   actual_next_pc;
+    logic branch_mispredict;
+
     always_comb begin
         unique case (id_2_ex.jump_type)
-            JT_JAL:  pc_should_jump = 1'b1;
-            JT_JALR: pc_should_jump = !jalr_misalign;
-            JT_BR:   pc_should_jump = is_branch_taken;
-            JT_CSR:  pc_should_jump = 1'b1;
-            default: pc_should_jump = 1'b0;
+            JT_JAL:  actual_taken = 1'b1;
+            JT_JALR: actual_taken = !jalr_misalign;
+            JT_BR:   actual_taken = is_branch_taken;
+            JT_CSR:  actual_taken = 1'b1;
+            default: actual_taken = 1'b0;
         endcase
     end
-    assign pc_jump_address = jump_target;
+
+    assign actual_next_pc = actual_taken ? jump_target : (inst_ctx_in.pc_inst_address + 64'd4);
+    assign branch_mispredict = (id_2_ex.jump_type != JT_NONE)
+                            && ((actual_taken != inst_ctx_in.predicted_taken)
+                             || (actual_taken && (actual_next_pc != inst_ctx_in.predicted_target)));
+
+    assign pc_should_jump  = branch_mispredict;
+    assign pc_jump_address = actual_next_pc;
 
     // EX/MEM 流水寄存器：!stall 前进；复位清零
     // csr_write 与 inst_ctx 同 latch 节奏，原样透传到 MEM 段
@@ -161,6 +171,7 @@ module EX_Stage (
                 trap_ctx_out.exc_tval  <= jump_target;
                 trap_ctx_out.is_ecall  <= trap_ctx_in.is_ecall;
                 trap_ctx_out.is_mret   <= trap_ctx_in.is_mret;
+                trap_ctx_out.is_sret   <= trap_ctx_in.is_sret;
             end else begin
                 trap_ctx_out        <= trap_ctx_in;
             end

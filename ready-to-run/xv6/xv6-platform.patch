@@ -1,0 +1,632 @@
+diff --git a/Makefile b/Makefile
+index f59a9ad..b71bd4f 100644
+--- a/Makefile
++++ b/Makefile
+@@ -61,7 +61,8 @@ OBJCOPY = $(TOOLPREFIX)objcopy
+ OBJDUMP = $(TOOLPREFIX)objdump
+ 
+ CFLAGS = -Wall -Werror -Wno-unknown-attributes -O -fno-omit-frame-pointer -ggdb -gdwarf-2
+-CFLAGS += -march=rv64gc
++# 当前 CPU 尚不支持 RVC 压缩指令，xv6 镜像固定生成 RV64G。
++CFLAGS += -march=rv64g
+ CFLAGS += -std=gnu99
+ CFLAGS += -MD
+ CFLAGS += -mcmodel=medany
+@@ -73,6 +74,7 @@ CFLAGS += -fno-builtin-strchr -fno-builtin-exit -fno-builtin-malloc -fno-builtin
+ CFLAGS += -fno-builtin-free
+ CFLAGS += -fno-builtin-memcpy -Wno-main
+ CFLAGS += -fno-builtin-printf -fno-builtin-fprintf -fno-builtin-vprintf
++CFLAGS += -Wno-unused-but-set-variable
+ CFLAGS += -I.
+ CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
+ 
+@@ -93,7 +95,7 @@ $K/kernel: $(OBJS) $K/kernel.ld
+ 	$(OBJDUMP) -t $K/kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $K/kernel.sym
+ 
+ $K/%.o: $K/%.S
+-	$(CC) -march=rv64gc -g -c -o $@ $<
++	$(CC) -march=rv64g -g -c -o $@ $<
+ 
+ tags: $(OBJS)
+ 	etags kernel/*.S kernel/*.c
+diff --git a/kernel/main.c b/kernel/main.c
+index 69e9eb3..0e0bf16 100644
+--- a/kernel/main.c
++++ b/kernel/main.c
+@@ -22,8 +22,7 @@ main()
+     procinit();         // process table
+     trapinit();         // trap vectors
+     trapinithart();     // install kernel trap vector
+-    plicinit();         // set up interrupt controller
+-    plicinithart();     // ask PLIC for device interrupts
++    // 当前 CPU 平台第一版不接 PLIC，磁盘和串口使用轮询路径。
+     binit();            // buffer cache
+     iinit();            // inode table
+     fileinit();         // file table
+@@ -38,7 +37,7 @@ main()
+     printk("hart %d starting\n", cpuid());
+     kvminithart();  // turn on paging
+     trapinithart(); // install kernel trap vector
+-    plicinithart(); // ask PLIC for device interrupts
++    // 当前 CPU 平台第一版不接 PLIC。
+   }
+ 
+   scheduler();
+diff --git a/kernel/memlayout.h b/kernel/memlayout.h
+index 52076e9..7804444 100644
+--- a/kernel/memlayout.h
++++ b/kernel/memlayout.h
+@@ -18,13 +18,20 @@
+ // PHYSTOP -- end RAM used by the kernel
+ 
+ // qemu puts UART registers here in physical memory.
+-#define UART0     0x10000000L
++#define UART0     0x40600000L
+ #define UART0_IRQ 10
+ 
+-// virtio mmio interface
+-#define VIRTIO0     0x10001000
++// 当前 CPU 仿真平台的简易 SD 接口。
++#define VIRTIO0     0x40601000
+ #define VIRTIO0_IRQ 1
+ 
++#define SDCARD_ADDR 0x40601000L
++#define SDCARD_DATA 0x40601008L
++
++#define CLINT_MSIP      0x38000000L
++#define CLINT_MTIMECMP  0x38004000L
++#define CLINT_MTIME     0x3800bff8L
++
+ // qemu puts platform-level interrupt controller (PLIC) here.
+ #define PLIC                 0x0c000000L
+ #define PLIC_PRIORITY        (PLIC + 0x0)
+@@ -37,7 +44,8 @@
+ // for use by the kernel and user pages
+ // from physical address 0x80000000 to PHYSTOP.
+ #define KERNBASE 0x80000000L
+-#define PHYSTOP  (KERNBASE + 128 * 1024 * 1024)
++// 缩小 xv6 第一阶段可见内存，避免仿真启动时逐页 memset 128MB。
++#define PHYSTOP  (KERNBASE + 16 * 1024 * 1024)
+ 
+ // map the trampoline page to the highest address,
+ // in both user and kernel space.
+diff --git a/kernel/kalloc.c b/kernel/kalloc.c
+index 2fcec38..c5085fc 100644
+--- a/kernel/kalloc.c
++++ b/kernel/kalloc.c
+@@ -51,8 +51,7 @@ kfree(void *pa)
+   if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
+     panic("kfree");
+ 
+-  // Fill with junk to catch dangling refs.
+-  memset(pa, 1, PGSIZE);
++  // 当前仿真速度较慢，跳过调试填充以缩短 xv6 启动时间。
+ 
+   r = (struct run *)pa;
+ 
+@@ -76,7 +75,6 @@ kalloc(void)
+     kmem.freelist = r->next;
+   release(&kmem.lock);
+ 
+-  if (r)
+-    memset((char *)r, 5, PGSIZE); // fill with junk
++  // 当前仿真速度较慢，跳过调试填充以缩短 xv6 启动时间。
+   return (void *)r;
+ }
+diff --git a/kernel/start.c b/kernel/start.c
+index 85fcb3a..680b640 100644
+--- a/kernel/start.c
++++ b/kernel/start.c
+@@ -30,7 +30,7 @@ start()
+   // delegate all interrupts and exceptions to supervisor mode.
+   w_medeleg(0xffff);
+   w_mideleg(0xffff);
+-  w_sie(r_sie() | SIE_SEIE | SIE_STIE);
++  w_sie(r_sie() | SIE_STIE);
+ 
+   // configure Physical Memory Protection to give supervisor mode
+   // access to all of physical memory.
+@@ -52,12 +52,6 @@ start()
+ void
+ timerinit()
+ {
+-  // enable the sstc extension (i.e. stimecmp).
+-  w_menvcfg(r_menvcfg() | (1L << 63));
+-
+-  // allow supervisor to use stimecmp and time.
+-  w_mcounteren(r_mcounteren() | 2);
+-
+-  // ask for the very first timer interrupt.
+-  w_stimecmp(r_time() + 1000000);
++  *(volatile uint64*)CLINT_MTIMECMP = *(volatile uint64*)CLINT_MTIME + 1000000;
++  w_mie(r_mie() | MIE_STIE);
+ }
+diff --git a/kernel/trap.c b/kernel/trap.c
+index 684e288..cf1b916 100644
+--- a/kernel/trap.c
++++ b/kernel/trap.c
+@@ -173,10 +173,8 @@ clockintr()
+     release(&tickslock);
+   }
+ 
+-  // ask for the next timer interrupt. this also clears
+-  // the interrupt request. 1000000 is about a tenth
+-  // of a second.
+-  w_stimecmp(r_time() + 1000000);
++  // ask for the next timer interrupt.
++  *(volatile uint64*)CLINT_MTIMECMP = *(volatile uint64*)CLINT_MTIME + 1000000;
+ }
+ 
+ // check if it's an external interrupt or software interrupt,
+@@ -189,28 +187,7 @@ devintr()
+ {
+   uint64 scause = r_scause();
+ 
+-  if (scause == 0x8000000000000009L) {
+-    // this is a supervisor external interrupt, via PLIC.
+-
+-    // irq indicates which device interrupted.
+-    int irq = plic_claim();
+-
+-    if (irq == UART0_IRQ) {
+-      uartintr();
+-    } else if (irq == VIRTIO0_IRQ) {
+-      virtio_disk_intr();
+-    } else if (irq) {
+-      printk("unexpected interrupt irq=%d\n", irq);
+-    }
+-
+-    // the PLIC allows each device to raise at most one
+-    // interrupt at a time; tell the PLIC the device is
+-    // now allowed to interrupt again.
+-    if (irq)
+-      plic_complete(irq);
+-
+-    return 1;
+-  } else if (scause == 0x8000000000000005L) {
++  if (scause == 0x8000000000000005L) {
+     // timer interrupt.
+     clockintr();
+     return 2;
+diff --git a/kernel/uart.c b/kernel/uart.c
+index 6699d81..6b5d661 100644
+--- a/kernel/uart.c
++++ b/kernel/uart.c
+@@ -48,28 +48,6 @@ extern volatile int panicked;  // from printk.c
+ void
+ uartinit(void)
+ {
+-  // disable interrupts.
+-  WriteReg(IER, 0x00);
+-
+-  // special mode to set baud rate.
+-  WriteReg(LCR, LCR_BAUD_LATCH);
+-
+-  // LSB for baud rate of 38.4K.
+-  WriteReg(0, 0x03);
+-
+-  // MSB for baud rate of 38.4K.
+-  WriteReg(1, 0x00);
+-
+-  // leave set-baud mode,
+-  // and set word length to 8 bits, no parity.
+-  WriteReg(LCR, LCR_EIGHT_BITS);
+-
+-  // reset and enable FIFOs.
+-  WriteReg(FCR, FCR_FIFO_ENABLE | FCR_FIFO_CLEAR);
+-
+-  // enable transmit and receive interrupts.
+-  WriteReg(IER, IER_TX_ENABLE | IER_RX_ENABLE);
+-
+   initlock(&tx_lock, "uart");
+ }
+ 
+@@ -89,9 +67,8 @@ uartwrite(char buf[], int n)
+       sleep(&tx_chan, &tx_lock);
+     }
+ 
+-    WriteReg(THR, buf[i]);
++    WriteReg(4, buf[i]);
+     i += 1;
+-    tx_busy = 1;
+   }
+ 
+   release(&tx_lock);
+@@ -112,10 +89,7 @@ uartputc_sync(int c)
+       ;
+   }
+ 
+-  // wait for UART to set Transmit Holding Empty in LSR.
+-  while ((ReadReg(LSR) & LSR_TX_IDLE) == 0)
+-    ;
+-  WriteReg(THR, c);
++  WriteReg(4, c);
+ 
+   if (panicking == 0)
+     pop_off();
+@@ -127,11 +101,7 @@ static int
+ uartgetc(void)
+ {
+   // is input ready?
+-  if (ReadReg(LSR) & LSR_RX_READY) {
+-    return ReadReg(RHR);
+-  } else {
+-    return -1;
+-  }
++  return -1;
+ }
+ 
+ // handle a uart interrupt, raised because input has
+@@ -140,14 +111,9 @@ uartgetc(void)
+ void
+ uartintr(void)
+ {
+-  ReadReg(ISR); // acknowledge the interrupt
+-
+   acquire(&tx_lock);
+-  if (ReadReg(LSR) & LSR_TX_IDLE) {
+-    // UART finished transmitting; wake up sending thread.
+-    tx_busy = 0;
+-    wakeup(&tx_chan);
+-  }
++  tx_busy = 0;
++  wakeup(&tx_chan);
+   release(&tx_lock);
+ 
+   // read and process incoming characters, if any.
+diff --git a/kernel/virtio_disk.c b/kernel/virtio_disk.c
+index da2f1fd..b500710 100644
+--- a/kernel/virtio_disk.c
++++ b/kernel/virtio_disk.c
+@@ -1,8 +1,6 @@
+ //
+-// driver for qemu's virtio disk device.
+-// uses qemu's mmio interface to virtio.
+-//
+-// qemu ... -drive file=fs.img,if=none,format=raw,id=x0 -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
++// 当前 CPU 仿真平台的简易 SD 块设备驱动。
++// 设备提供 64-bit 地址寄存器和 64-bit 数据寄存器。
+ //
+ 
+ #include "types.h"
+@@ -14,313 +12,55 @@
+ #include "sleeplock.h"
+ #include "fs.h"
+ #include "buf.h"
+-#include "virtio.h"
+-
+-// the address of virtio mmio register r.
+-#define R(r) ((volatile uint32 *)(VIRTIO0 + (r)))
+-
+-static struct disk {
+-  // a set (not a ring) of DMA descriptors, with which the
+-  // driver tells the device where to read and write individual
+-  // disk operations. there are NUM descriptors.
+-  // most commands consist of a "chain" (a linked list) of a couple of
+-  // these descriptors.
+-  struct virtq_desc *desc;
+-
+-  // a ring in which the driver writes descriptor numbers
+-  // that the driver would like the device to process.  it only
+-  // includes the head descriptor of each chain. the ring has
+-  // NUM elements.
+-  struct virtq_avail *avail;
+-
+-  // a ring in which the device writes descriptor numbers that
+-  // the device has finished processing (just the head of each chain).
+-  // there are NUM used ring entries.
+-  struct virtq_used *used;
+-
+-  // our own book-keeping.
+-  char free[NUM];  // is a descriptor free?
+-  uint16 used_idx; // we've looked this far in used[2..NUM].
+-
+-  // track info about in-flight operations,
+-  // for use when completion interrupt arrives.
+-  // indexed by first descriptor index of chain.
+-  struct {
+-    struct buf *b;
+-    char status;
+-  } info[NUM];
+-
+-  // disk command headers.
+-  // one-for-one with descriptors, for convenience.
+-  struct virtio_blk_req ops[NUM];
+-
+-  struct spinlock vdisk_lock;
+ 
+-} disk;
++static struct spinlock sd_lock;
+ 
+-void
+-virtio_disk_init(void)
++static inline void
++sd_setaddr(uint64 off)
+ {
+-  uint32 status = 0;
+-
+-  initlock(&disk.vdisk_lock, "virtio_disk");
+-
+-  if (*R(VIRTIO_MMIO_MAGIC_VALUE) != 0x74726976 ||
+-      *R(VIRTIO_MMIO_VERSION) != 2 || *R(VIRTIO_MMIO_DEVICE_ID) != 2 ||
+-      *R(VIRTIO_MMIO_VENDOR_ID) != 0x554d4551) {
+-    panic("could not find virtio disk");
+-  }
+-
+-  // reset device
+-  *R(VIRTIO_MMIO_STATUS) = status;
+-
+-  // set ACKNOWLEDGE status bit
+-  status |= VIRTIO_CONFIG_S_ACKNOWLEDGE;
+-  *R(VIRTIO_MMIO_STATUS) = status;
+-
+-  // set DRIVER status bit
+-  status |= VIRTIO_CONFIG_S_DRIVER;
+-  *R(VIRTIO_MMIO_STATUS) = status;
+-
+-  // negotiate features
+-  uint64 features = *R(VIRTIO_MMIO_DEVICE_FEATURES);
+-  features &= ~(1 << VIRTIO_BLK_F_RO);
+-  features &= ~(1 << VIRTIO_BLK_F_SCSI);
+-  features &= ~(1 << VIRTIO_BLK_F_CONFIG_WCE);
+-  features &= ~(1 << VIRTIO_BLK_F_MQ);
+-  features &= ~(1 << VIRTIO_F_ANY_LAYOUT);
+-  features &= ~(1 << VIRTIO_RING_F_EVENT_IDX);
+-  features &= ~(1 << VIRTIO_RING_F_INDIRECT_DESC);
+-  *R(VIRTIO_MMIO_DRIVER_FEATURES) = features;
+-
+-  // tell device that feature negotiation is complete.
+-  status |= VIRTIO_CONFIG_S_FEATURES_OK;
+-  *R(VIRTIO_MMIO_STATUS) = status;
+-
+-  // re-read status to ensure FEATURES_OK is set.
+-  status = *R(VIRTIO_MMIO_STATUS);
+-  if (!(status & VIRTIO_CONFIG_S_FEATURES_OK))
+-    panic("virtio disk FEATURES_OK unset");
+-
+-  // initialize queue 0.
+-  *R(VIRTIO_MMIO_QUEUE_SEL) = 0;
+-
+-  // ensure queue 0 is not in use.
+-  if (*R(VIRTIO_MMIO_QUEUE_READY))
+-    panic("virtio disk should not be ready");
+-
+-  // check maximum queue size.
+-  uint32 max = *R(VIRTIO_MMIO_QUEUE_NUM_MAX);
+-  if (max == 0)
+-    panic("virtio disk has no queue 0");
+-  if (max < NUM)
+-    panic("virtio disk max queue too short");
+-
+-  // allocate and zero queue memory.
+-  disk.desc = kalloc();
+-  disk.avail = kalloc();
+-  disk.used = kalloc();
+-  if (!disk.desc || !disk.avail || !disk.used)
+-    panic("virtio disk kalloc");
+-  memset(disk.desc, 0, PGSIZE);
+-  memset(disk.avail, 0, PGSIZE);
+-  memset(disk.used, 0, PGSIZE);
+-
+-  // set queue size.
+-  *R(VIRTIO_MMIO_QUEUE_NUM) = NUM;
+-
+-  // write physical addresses.
+-  *R(VIRTIO_MMIO_QUEUE_DESC_LOW) = (uint64)disk.desc;
+-  *R(VIRTIO_MMIO_QUEUE_DESC_HIGH) = (uint64)disk.desc >> 32;
+-  *R(VIRTIO_MMIO_DRIVER_DESC_LOW) = (uint64)disk.avail;
+-  *R(VIRTIO_MMIO_DRIVER_DESC_HIGH) = (uint64)disk.avail >> 32;
+-  *R(VIRTIO_MMIO_DEVICE_DESC_LOW) = (uint64)disk.used;
+-  *R(VIRTIO_MMIO_DEVICE_DESC_HIGH) = (uint64)disk.used >> 32;
+-
+-  // queue is ready.
+-  *R(VIRTIO_MMIO_QUEUE_READY) = 0x1;
+-
+-  // all NUM descriptors start out unused.
+-  for (int i = 0; i < NUM; i++)
+-    disk.free[i] = 1;
+-
+-  // tell device we're completely ready.
+-  status |= VIRTIO_CONFIG_S_DRIVER_OK;
+-  *R(VIRTIO_MMIO_STATUS) = status;
+-
+-  // plic.c and trap.c arrange for interrupts from VIRTIO0_IRQ.
++  *(volatile uint64*)SDCARD_ADDR = off;
+ }
+ 
+-// find a free descriptor, mark it non-free, return its index.
+-static int
+-alloc_desc()
++static inline uint64
++sd_read64(void)
+ {
+-  for (int i = 0; i < NUM; i++) {
+-    if (disk.free[i]) {
+-      disk.free[i] = 0;
+-      return i;
+-    }
+-  }
+-  return -1;
++  // 仿真侧 SD 数据寄存器在零等待响应时会先刷新内部锁存值；第二次读取才稳定。
++  (void)*(volatile uint64*)SDCARD_DATA;
++  return *(volatile uint64*)SDCARD_DATA;
+ }
+ 
+-// mark a descriptor as free.
+-static void
+-free_desc(int i)
++static inline void
++sd_write64(uint64 data)
+ {
+-  if (i >= NUM)
+-    panic("free_desc 1");
+-  if (disk.free[i])
+-    panic("free_desc 2");
+-  disk.desc[i].addr = 0;
+-  disk.desc[i].len = 0;
+-  disk.desc[i].flags = 0;
+-  disk.desc[i].next = 0;
+-  disk.free[i] = 1;
+-  wakeup(&disk.free[0]);
++  *(volatile uint64*)SDCARD_DATA = data;
+ }
+ 
+-// free a chain of descriptors.
+-static void
+-free_chain(int i)
+-{
+-  while (1) {
+-    int flag = disk.desc[i].flags;
+-    int nxt = disk.desc[i].next;
+-    free_desc(i);
+-    if (flag & VRING_DESC_F_NEXT)
+-      i = nxt;
+-    else
+-      break;
+-  }
+-}
+-
+-// allocate three descriptors (they need not be contiguous).
+-// disk transfers always use three descriptors.
+-static int
+-alloc3_desc(int *idx)
++void
++virtio_disk_init(void)
+ {
+-  for (int i = 0; i < 3; i++) {
+-    idx[i] = alloc_desc();
+-    if (idx[i] < 0) {
+-      for (int j = 0; j < i; j++)
+-        free_desc(idx[j]);
+-      return -1;
+-    }
+-  }
+-  return 0;
++  initlock(&sd_lock, "sd_disk");
+ }
+ 
+ void
+ virtio_disk_rw(struct buf *b, int write)
+ {
+-  uint64 sector = b->blockno * (BSIZE / 512);
+-
+-  acquire(&disk.vdisk_lock);
+-
+-  // the spec's Section 5.2 says that legacy block operations use
+-  // three descriptors: one for type/reserved/sector, one for the
+-  // data, one for a 1-byte status result.
+-
+-  // allocate the three descriptors.
+-  int idx[3];
+-  while (1) {
+-    if (alloc3_desc(idx) == 0) {
+-      break;
++  acquire(&sd_lock);
++
++  uint64 base = (uint64)b->blockno * BSIZE;
++  for (int off = 0; off < BSIZE; off += 8) {
++    sd_setaddr(base + off);
++    if (write) {
++      sd_write64(*(uint64*)(b->data + off));
++    } else {
++      *(uint64*)(b->data + off) = sd_read64();
+     }
+-    sleep(&disk.free[0], &disk.vdisk_lock);
+   }
+ 
+-  // format the three descriptors.
+-  // qemu's virtio-blk.c reads them.
+-
+-  struct virtio_blk_req *buf0 = &disk.ops[idx[0]];
+-
+-  if (write)
+-    buf0->type = VIRTIO_BLK_T_OUT; // write the disk
+-  else
+-    buf0->type = VIRTIO_BLK_T_IN; // read the disk
+-  buf0->reserved = 0;
+-  buf0->sector = sector;
+-
+-  disk.desc[idx[0]].addr = (uint64)buf0;
+-  disk.desc[idx[0]].len = sizeof(struct virtio_blk_req);
+-  disk.desc[idx[0]].flags = VRING_DESC_F_NEXT;
+-  disk.desc[idx[0]].next = idx[1];
+-
+-  disk.desc[idx[1]].addr = (uint64)b->data;
+-  disk.desc[idx[1]].len = BSIZE;
+-  if (write)
+-    disk.desc[idx[1]].flags = 0; // device reads b->data
+-  else
+-    disk.desc[idx[1]].flags = VRING_DESC_F_WRITE; // device writes b->data
+-  disk.desc[idx[1]].flags |= VRING_DESC_F_NEXT;
+-  disk.desc[idx[1]].next = idx[2];
+-
+-  disk.info[idx[0]].status = 0xff; // device writes 0 on success
+-  disk.desc[idx[2]].addr = (uint64)&disk.info[idx[0]].status;
+-  disk.desc[idx[2]].len = 1;
+-  disk.desc[idx[2]].flags = VRING_DESC_F_WRITE; // device writes the status
+-  disk.desc[idx[2]].next = 0;
+-
+-  // record struct buf for virtio_disk_intr().
+-  b->disk = 1;
+-  disk.info[idx[0]].b = b;
+-
+-  // tell the device the first index in our chain of descriptors.
+-  disk.avail->ring[disk.avail->idx % NUM] = idx[0];
+-
+-  __atomic_thread_fence(__ATOMIC_SEQ_CST);
+-
+-  // tell the device another avail ring entry is available.
+-  disk.avail->idx += 1; // not % NUM ...
+-
+-  __atomic_thread_fence(__ATOMIC_SEQ_CST);
+-
+-  *R(VIRTIO_MMIO_QUEUE_NOTIFY) = 0; // value is queue number
+-
+-  // Wait for virtio_disk_intr() to say request has finished.
+-  while (b->disk == 1) {
+-    sleep(b, &disk.vdisk_lock);
+-  }
+-
+-  disk.info[idx[0]].b = 0;
+-  free_chain(idx[0]);
+-
+-  release(&disk.vdisk_lock);
++  b->disk = 0;
++  release(&sd_lock);
+ }
+ 
+ void
+-virtio_disk_intr()
++virtio_disk_intr(void)
+ {
+-  acquire(&disk.vdisk_lock);
+-
+-  // the device won't raise another interrupt until we tell it
+-  // we've seen this interrupt, which the following line does.
+-  // this may race with the device writing new entries to
+-  // the "used" ring, in which case we may process the new
+-  // completion entries in this interrupt, and have nothing to do
+-  // in the next interrupt, which is harmless.
+-  *R(VIRTIO_MMIO_INTERRUPT_ACK) = *R(VIRTIO_MMIO_INTERRUPT_STATUS) & 0x3;
+-
+-  __atomic_thread_fence(__ATOMIC_SEQ_CST);
+-
+-  // the device increments disk.used->idx when it
+-  // adds an entry to the used ring.
+-
+-  while (disk.used_idx != disk.used->idx) {
+-    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+-    int id = disk.used->ring[disk.used_idx % NUM].id;
+-
+-    if (disk.info[id].status != 0)
+-      panic("virtio_disk_intr status");
+-
+-    struct buf *b = disk.info[id].b;
+-    b->disk = 0; // disk is done with buf
+-    wakeup(b);
+-
+-    disk.used_idx += 1;
+-  }
+-
+-  release(&disk.vdisk_lock);
+ }

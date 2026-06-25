@@ -64,6 +64,24 @@ module core import common::*; import top_pkg::*; (
 	assign mmu_priv_mode_o  = mmu_priv_mode;
 
 `ifdef VERILATOR
+	word_t difftest_last_pc;
+	word_t difftest_cycle_cnt;
+	word_t difftest_instr_cnt;
+
+	always_ff @(posedge clk) begin
+		if (reset) begin
+			difftest_last_pc    <= 64'b0;
+			difftest_cycle_cnt  <= 64'b0;
+			difftest_instr_cnt  <= 64'b0;
+		end else begin
+			difftest_cycle_cnt <= difftest_cycle_cnt + 64'b1;
+			if (commit_valid) begin
+				difftest_last_pc   <= commit_pc;
+				difftest_instr_cnt <= difftest_instr_cnt + 64'b1;
+			end
+		end
+	end
+
 	DifftestInstrCommit DifftestInstrCommit(
 		.clock              (clk),
 		.coreid             (0),              // 无需改动
@@ -121,9 +139,9 @@ module core import common::*; import top_pkg::*; (
 		.coreid             (0),
 		.valid              (0),
 		.code               (0),
-		.pc                 (0),
-		.cycleCnt           (0),
-		.instrCnt           (0)
+		.pc                 (difftest_last_pc),
+		.cycleCnt           (difftest_cycle_cnt),
+		.instrCnt           (difftest_instr_cnt)
 	);
 
 	// sstatus 是 mstatus 的子集视图，物理上不单独保存，按 mask 抽取即可
@@ -138,20 +156,20 @@ module core import common::*; import top_pkg::*; (
 		.mstatus            (csr_state.mstatus),
 		.sstatus            (sstatus),
 		.mepc               (csr_state.mepc),
-		.sepc               (0),
+		.sepc               (csr_state.sepc),
 		.mtval              (csr_state.mtval),
-		.stval              (0),
+		.stval              (csr_state.stval),
 		.mtvec              (csr_state.mtvec),
-		.stvec              (0),
+		.stvec              (csr_state.stvec),
 		.mcause             (csr_state.mcause),
-		.scause             (0),
+		.scause             (csr_state.scause),
 		.satp               (csr_state.satp),
 		.mip                (csr_state.mip),
 		.mie                (csr_state.mie),
 		.mscratch           (csr_state.mscratch),
-		.sscratch           (0),
-		.mideleg            (0),
-		.medeleg            (0)
+		.sscratch           (csr_state.sscratch),
+		.mideleg            (csr_state.mideleg),
+		.medeleg            (csr_state.medeleg)
 	);
 `endif
 endmodule

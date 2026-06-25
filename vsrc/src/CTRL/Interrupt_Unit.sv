@@ -23,6 +23,8 @@ module Interrupt_Unit (
     input  u64       mstatus,
     input  u64       mip_sw,
     input  u64       mie,
+    input  u64       sie,
+    input  u64       mideleg,
     input  PRIV_MODE priv_mode,
     input  u64       if_pc,
     input  IF_2_ID   if_2_id,
@@ -32,6 +34,8 @@ module Interrupt_Unit (
 
     input  logic     trap_write_en,
     input  u64       trap_mstatus_next,
+    input  CSR_WRITE ex_csr_write,
+    input  CSR_WRITE mem_csr_write,
     input  CSR_WRITE wb_csr_write,
     input  logic     wb_commit_valid,
 
@@ -58,6 +62,12 @@ module Interrupt_Unit (
     logic meip_pending;
     logic msip_pending;
     logic mtip_pending;
+    logic seip_pending;
+    logic ssip_pending;
+    logic stip_pending;
+    logic s_global_en;
+    logic s_int_pending;
+    logic csr_write_inflight;
 
     assign mip_hw = (64'(exint) << 11) | (64'(trint) << 7) | (64'(swint) << 3);
     assign mip_full = mip_sw | mip_hw;
@@ -66,7 +76,7 @@ module Interrupt_Unit (
                       || (swint != prev_swint)
                       || (exint != prev_exint);
 
-    // WB 提交 mstatus 当拍即参与判定（csrsi 开 MIE 的唯一窗口靠此 bypass）
+    // WB 提交 mstatus/sstatus 当拍即参与判定，避免刚关闭 SIE 后仍投递 S-mode 中断。
     always_comb begin
         mstatus_eff = mstatus;
         if (trap_write_en)
@@ -76,13 +86,26 @@ module Interrupt_Unit (
                  && (wb_csr_write.write_addr == CSR_MSTATUS))
             mstatus_eff = (wb_csr_write.write_data & MSTATUS_MASK)
                         | (mstatus & ~MSTATUS_MASK);
+        else if (wb_commit_valid
+                 && wb_csr_write.write_en
+                 && (wb_csr_write.write_addr == CSR_SSTATUS))
+            mstatus_eff = sstatus_to_mstatus(wb_csr_write.write_data, mstatus);
     end
 
     assign global_en    = (priv_mode != PRIV_M) || mstatus_get_mie(mstatus_eff);
     assign meip_pending = mip_full[11] && mie[11];
     assign msip_pending = mip_full[3]  && mie[3];
     assign mtip_pending = mip_full[7]  && mie[7];
+    assign seip_pending = mip_full[9]  && sie[9] && mideleg[9];
+    assign ssip_pending = mip_full[1]  && sie[1] && mideleg[1];
+    assign stip_pending = (mip_full[5] || (mideleg[5] && mip_full[7])) && sie[5] && mideleg[5];
+    assign s_global_en  = (priv_mode == PRIV_U) || ((priv_mode == PRIV_S) && mstatus_get_sie(mstatus_eff));
+    assign s_int_pending = seip_pending || ssip_pending || stip_pending;
     assign int_pending  = meip_pending || msip_pending || mtip_pending;
+    assign csr_write_inflight = ex_csr_write.write_en
+                              || mem_csr_write.write_en
+                              || (wb_commit_valid && wb_csr_write.write_en)
+                              || trap_write_en;
 
     // csrsi 在 WB 提交开 MIE 的唯一窗口
     assign mie_open_commit = wb_commit_valid
@@ -101,9 +124,11 @@ module Interrupt_Unit (
                          && (int_changed || pending_latched);
 
     assign int_take = !mem_2_ctrl.is_atomic_busy
+                    && !csr_write_inflight
                     && ((priv_mode == PRIV_M)
                         ? (mtip_take_m || other_int_take)
-                        : (global_en && int_pending && (int_changed || pending_latched)));
+                        : ((s_global_en && s_int_pending && (int_changed || pending_latched))
+                        || (global_en && int_pending && (int_changed || pending_latched))));
 
     // M 模式 MTIP：被中断指令为 csrsi 下一条（mem+4）；其余同前
     always_comb begin
@@ -132,13 +157,19 @@ module Interrupt_Unit (
                     int_mcause <= MCAUSE_MEI;
                 else if (msip_pending)
                     int_mcause <= MCAUSE_MSI;
+                else if (seip_pending)
+                    int_mcause <= MCAUSE_SEI;
+                else if (ssip_pending)
+                    int_mcause <= MCAUSE_SSI;
+                else if (stip_pending)
+                    int_mcause <= MCAUSE_STI;
                 else
                     int_mcause <= MCAUSE_MTI;
             end
 
             if (int_take)
                 pending_latched <= 1'b0;
-            else if (int_pending && !global_en)
+            else if ((int_pending && !global_en) || (s_int_pending && !s_global_en))
                 pending_latched <= 1'b1;
         end
     end

@@ -112,6 +112,10 @@ module MEM_Stage (
             trap_ctx_next.exc_cause = (ex_2_mem.amo_op == AMO_OP_LR) ? MCAUSE_LOAD_MISALIGN
                                                                      : MCAUSE_STORE_MISALIGN;
             trap_ctx_next.exc_tval  = ex_2_mem.ex_result;
+        end else if ((is_load || is_store || is_atomic) && dbus_response.exc_valid) begin
+            trap_ctx_next.exc_valid = 1'b1;
+            trap_ctx_next.exc_cause = dbus_response.exc_cause;
+            trap_ctx_next.exc_tval  = dbus_response.exc_tval;
         end
     end
 

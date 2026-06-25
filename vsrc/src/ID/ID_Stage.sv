@@ -38,6 +38,9 @@ module ID_Stage (
     input  u64       trap_mepc_next,
     input  u64       trap_mcause_next,
     input  u64       trap_mtval_next,
+    input  u64       trap_sepc_next,
+    input  u64       trap_scause_next,
+    input  u64       trap_stval_next,
     input  u64       mip_hw,
 
     output INST_CTX  inst_ctx,
@@ -53,7 +56,9 @@ module ID_Stage (
     output ID_2_CTRL id_2_ctrl,
     output CSR_STATE csr_state,
     output u64       mtvec_value,
-    output u64       mepc_value
+    output u64       mepc_value,
+    output u64       stvec_value,
+    output u64       sepc_value
 );
 
     // Decoder 输出
@@ -74,6 +79,7 @@ module ID_Stage (
     logic       dec_is_csr_imm;
     logic       dec_is_ecall;
     logic       dec_is_mret;
+    logic       dec_is_sret;
     logic       dec_is_illegal;
     CSR_OP      dec_csr_op;
     u12         dec_csr_addr;
@@ -133,6 +139,7 @@ module ID_Stage (
 
         .is_ecall      ( dec_is_ecall ),
         .is_mret       ( dec_is_mret ),
+        .is_sret       ( dec_is_sret ),
         .is_illegal    ( dec_is_illegal )
     );
 
@@ -211,12 +218,17 @@ module ID_Stage (
         .trap_mepc_next    ( trap_mepc_next ),
         .trap_mcause_next  ( trap_mcause_next ),
         .trap_mtval_next   ( trap_mtval_next ),
+        .trap_sepc_next    ( trap_sepc_next ),
+        .trap_scause_next  ( trap_scause_next ),
+        .trap_stval_next   ( trap_stval_next ),
         .mip_hw            ( mip_hw ),
 
         .csr_state   ( csr_state ),
         .mip_sw      ( mip_sw ),
         .mtvec_value ( mtvec_value ),
-        .mepc_value  ( mepc_value )
+        .mepc_value  ( mepc_value ),
+        .stvec_value ( stvec_value ),
+        .sepc_value  ( sepc_value )
     );
 
     // CSR 写数据：源操作数在 CSR-imm 时为 zero-extended uimm，否则为 RegFile 直读 rs1
@@ -275,10 +287,17 @@ module ID_Stage (
             inst_ctx.inst            <= if_2_id.inst;
             inst_ctx.rd_addr         <= dec_rd_addr;
             inst_ctx.opcode          <= dec_opcode;
+            inst_ctx.predicted_taken  <= if_2_id.predicted_taken;
+            inst_ctx.predicted_target <= if_2_id.predicted_target;
 
             trap_ctx.is_ecall  <= dec_is_ecall;
             trap_ctx.is_mret   <= dec_is_mret;
-            if (dec_is_illegal || v_semantics.vector_state_illegal) begin
+            trap_ctx.is_sret   <= dec_is_sret;
+            if (if_2_id.fetch_exc_valid) begin
+                trap_ctx.exc_valid <= 1'b1;
+                trap_ctx.exc_cause <= if_2_id.fetch_exc_cause;
+                trap_ctx.exc_tval  <= if_2_id.fetch_exc_tval;
+            end else if (dec_is_illegal || v_semantics.vector_state_illegal) begin
                 trap_ctx.exc_valid <= 1'b1;
                 trap_ctx.exc_cause <= MCAUSE_ILLEGAL_INST;
                 trap_ctx.exc_tval  <= {32'b0, if_2_id.inst};

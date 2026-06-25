@@ -18,6 +18,9 @@ module Inst_Fetch (
 
     output u32         inst,
     output logic       is_inst_ready,
+    output logic       fetch_exc_valid,
+    output u64         fetch_exc_cause,
+    output u64         fetch_exc_tval,
 
     output dbus_req_t  dbus_request,
     input  dbus_resp_t dbus_response
@@ -26,6 +29,9 @@ module Inst_Fetch (
     u64   latched_addr;
     u32   latched_inst;
     logic latched_valid;
+    logic latched_exc_valid;
+    u64   latched_exc_cause;
+    u64   latched_exc_tval;
 
     u64   response_data;
     u32   inst_word;
@@ -40,6 +46,9 @@ module Inst_Fetch (
     // 命中：已缓存地址与当前 PC 匹配
     assign is_inst_ready = latched_valid && (latched_addr == pc_inst_address);
     assign inst          = latched_inst;
+    assign fetch_exc_valid = is_inst_ready && latched_exc_valid;
+    assign fetch_exc_cause = latched_exc_cause;
+    assign fetch_exc_tval  = latched_exc_tval;
     assign request_valid = pending_valid || !is_inst_ready;
     assign request_addr  = pending_valid ? pending_addr : pc_inst_address;
     assign response_matches_pc = pending_valid && (pending_addr == pc_inst_address);
@@ -69,6 +78,9 @@ module Inst_Fetch (
             latched_addr  <= '0;
             latched_inst  <= '0;
             latched_valid <= 1'b0;
+            latched_exc_valid <= 1'b0;
+            latched_exc_cause <= 64'b0;
+            latched_exc_tval  <= 64'b0;
             pending_addr  <= '0;
             pending_valid <= 1'b0;
             pending_kill  <= 1'b0;
@@ -93,6 +105,9 @@ module Inst_Fetch (
                     latched_addr  <= pending_addr;
                     latched_inst  <= inst_word;
                     latched_valid <= 1'b1;
+                    latched_exc_valid <= dbus_response.exc_valid;
+                    latched_exc_cause <= dbus_response.exc_cause;
+                    latched_exc_tval  <= dbus_response.exc_tval;
                 end
             end
         end

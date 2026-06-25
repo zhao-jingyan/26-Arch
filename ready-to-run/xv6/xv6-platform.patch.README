@@ -1,0 +1,18 @@
+# xv6-platform.patch
+
+适配当前 CPU 平台的 xv6 patch 位于：
+
+```text
+ready-to-run/xv6/xv6-platform.patch
+```
+
+`make xv6-build-image` 会在构建前尝试把该 patch 应用到 `XV6_HOME`。
+
+当前补丁覆盖：
+
+- `kernel/memlayout.h`：UART、CLINT-like timer、磁盘设备和 RAM 范围。
+- `kernel/uart.c`：适配 `0x40600004` 写字符和 `0x40600008` 状态寄存器。
+- `kernel/start.c` 或 timer 初始化：使用 `0x38004000/0x3800bff8`。
+- 磁盘驱动：优先适配 `0x40601000/0x40601008` 简易 SD 接口。
+- `kernel/main.c` / `kernel/trap.c`：第一版禁用 PLIC 外部中断路径，timer 使用 CLINT-like 寄存器续约。
+- `Makefile`：抑制新版工具链对 `usertests.c` 的 unused-but-set-variable Werror。

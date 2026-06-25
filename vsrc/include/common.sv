@@ -189,6 +189,9 @@ typedef struct packed {
     logic  addr_ok;     // is the address accepted by cache?
     logic  data_ok;     // is the field "data" valid?
     word_t data;        // the data read from cache
+    logic  exc_valid;   // MMU/总线侧异常，随 data_ok 一起返回
+    word_t exc_cause;
+    word_t exc_tval;
 } dbus_resp_t;
 
 /**
@@ -206,13 +209,16 @@ typedef struct packed {
     logic  addr_ok;     // is the address accepted by cache?
     logic  data_ok;     // is the field "data" valid?
     u32 data;           // the data read from cache
+    logic  exc_valid;
+    word_t exc_cause;
+    word_t exc_tval;
 } ibus_resp_t;
 
 `define IREQ_TO_DREQ(ireq) \
     {ireq, MSIZE4, 8'b0, 64'b0}
 
 `define DRESP_TO_IRESP(dresp, ireq) \
-    {dresp.addr_ok, dresp.data_ok, ireq.addr[2] ? dresp.data[63:32] : dresp.data[31:0]}
+    {dresp.addr_ok, dresp.data_ok, ireq.addr[2] ? dresp.data[63:32] : dresp.data[31:0], dresp.exc_valid, dresp.exc_cause, dresp.exc_tval}
 
 /**
  * cache bus: simplified burst AXI transaction interface
@@ -226,6 +232,7 @@ typedef enum i2 {
 
 typedef struct packed {
     logic    valid;     // in request?
+    logic    is_inst;   // 是否来自取指通路，用于区分 page fault cause
     logic    is_write;  // is it a write transaction?
     msize_t  size;      // number of bytes in one burst
     addr_t   addr;      // start address
@@ -239,6 +246,9 @@ typedef struct packed {
     logic  ready;       // is data arrived in this cycle?
     logic  last;        // is it the last word?
     word_t data;        // the data from AXI bus
+    logic  exc_valid;   // 地址翻译/权限异常
+    word_t exc_cause;
+    word_t exc_tval;
 } cbus_resp_t;
 
 endpackage

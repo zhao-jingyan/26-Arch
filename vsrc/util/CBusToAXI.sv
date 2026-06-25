@@ -96,6 +96,9 @@ module CBusToAXI
     assign cresp.ready = ready;
     assign cresp.last  = ready && (!in_issue[R] || rlast) && is_last;
     assign cresp.data  = rdata;
+    assign cresp.exc_valid = 1'b0;
+    assign cresp.exc_cause = 64'b0;
+    assign cresp.exc_tval  = 64'b0;
 
     // AXI driver
     always_comb begin
@@ -135,8 +138,9 @@ module CBusToAXI
 
         if (in_issue[W]) begin
             wvalid = 1;
-            wdata  = creq.data;
-            wstrb  = creq.strobe;
+            // 写事务发起后上游请求可能已经变化，W 通道必须使用锁存的请求内容。
+            wdata  = saved_req.data;
+            wstrb  = saved_req.strobe;
             wlast  = is_last;
         end
 
@@ -164,7 +168,7 @@ module CBusToAXI
     end
 
     `UNUSED_OK({
-        saved_req.valid, saved_req.is_write,
+        saved_req.valid, saved_req.is_inst, saved_req.is_write,
         saved_req.data, saved_req.strobe,
         rid, rresp, bid, bresp
     });

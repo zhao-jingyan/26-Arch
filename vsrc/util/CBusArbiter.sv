@@ -28,8 +28,9 @@ module CBusArbiter
     int index, select;
     cbus_req_t saved_req, selected_req;
 
-    // assign oreq = ireqs[index];
-    assign oreq = busy ? ireqs[index] : '0;  // prevent early issue
+    // 事务发起后固定使用锁存请求，避免上游流水变化污染写数据/写掩码。
+    // 空闲时仍直通新选中的请求，保证第一拍可以发起。
+    assign oreq = busy ? saved_req : selected_req;
     assign selected_req = ireqs[select];
 
     // select a preferred request
@@ -73,7 +74,7 @@ module CBusArbiter
         {busy, index, saved_req} <= '0;
     end
 
-    `UNUSED_OK({saved_req});
+    `UNUSED_OK({index});
 endmodule
 
 

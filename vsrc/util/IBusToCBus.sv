@@ -16,7 +16,7 @@ module IBusToCBus
 );
     // since IBus is a subset of DBus, we can reuse DBusToCBus.
     dbus_resp_t dresp;
-    DBusToCBus inst(
+    DBusToCBus #(.IS_INST(1'b1)) inst(
         .dreq(`IREQ_TO_DREQ(ireq)),
         .dresp(dresp),
         .dcreq(icreq),

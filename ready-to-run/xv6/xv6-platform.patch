@@ -33,7 +33,18 @@ diff --git a/kernel/main.c b/kernel/main.c
 index 69e9eb3..0e0bf16 100644
 --- a/kernel/main.c
 +++ b/kernel/main.c
-@@ -22,8 +22,7 @@ main()
+@@ -13,9 +13,7 @@ main()
+   if (cpuid() == 0) {
+     consoleinit();
+     printkinit();
+-    printk("\n");
+-    printk("xv6 kernel is booting\n");
+-    printk("\n");
++    printk("booting\n");
+     kinit();            // physical page allocator
+     kvminit();          // create kernel page table
+     kvminithart();      // turn on paging
+@@ -22,8 +20,7 @@ main()
      procinit();         // process table
      trapinit();         // trap vectors
      trapinithart();     // install kernel trap vector
@@ -43,8 +54,11 @@ index 69e9eb3..0e0bf16 100644
      binit();            // buffer cache
      iinit();            // inode table
      fileinit();         // file table
-@@ -38,7 +37,7 @@ main()
-     printk("hart %d starting\n", cpuid());
+@@ -38,10 +35,9 @@ main()
+     while (started == 0)
+       ;
+     __atomic_thread_fence(__ATOMIC_SEQ_CST);
+-    printk("hart %d starting\n", cpuid());
      kvminithart();  // turn on paging
      trapinithart(); // install kernel trap vector
 -    plicinithart(); // ask PLIC for device interrupts
@@ -644,3 +658,16 @@ index da2f1fd..b500710 100644
 -
 -  release(&disk.vdisk_lock);
  }
+diff --git a/user/init.c b/user/init.c
+index 925d568..d798f4f 100644
+--- a/user/init.c
++++ b/user/init.c
+@@ -24,7 +24,6 @@ main(void)
+   dup(0); // stderr
+ 
+   for (;;) {
+-    printf("init: starting sh\n");
+     pid = fork();
+     if (pid < 0) {
+       printf("init: fork failed\n");
+

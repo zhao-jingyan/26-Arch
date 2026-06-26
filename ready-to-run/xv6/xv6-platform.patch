@@ -188,6 +188,20 @@ index 684e288..cf1b916 100644
      // timer interrupt.
      clockintr();
      return 2;
+diff --git a/kernel/vm.c b/kernel/vm.c
+index 6bc3730..3831b86 100644
+--- a/kernel/vm.c
++++ b/kernel/vm.c
+@@ -32,6 +32,9 @@ kvmmake(void)
+   // virtio mmio disk interface
+   kvmmap(kpgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+ 
++  // 当前 CPU 平台的 CLINT-like timer 寄存器。
++  kvmmap(kpgtbl, CLINT_MSIP, CLINT_MSIP, 0x10000, PTE_R | PTE_W);
++
+   // PLIC
+   kvmmap(kpgtbl, PLIC, PLIC, 0x4000000, PTE_R | PTE_W);
+ 
 diff --git a/kernel/uart.c b/kernel/uart.c
 index 6699d81..6b5d661 100644
 --- a/kernel/uart.c

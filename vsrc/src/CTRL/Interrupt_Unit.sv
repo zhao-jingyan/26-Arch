@@ -127,8 +127,7 @@ module Interrupt_Unit (
                     && !csr_write_inflight
                     && ((priv_mode == PRIV_M)
                         ? (mtip_take_m || other_int_take)
-                        : ((s_global_en && s_int_pending && (int_changed || pending_latched))
-                        || (global_en && int_pending && (int_changed || pending_latched))));
+                        : (s_global_en && s_int_pending && (int_changed || pending_latched)));
 
     // M 模式 MTIP：被中断指令为 csrsi 下一条（mem+4）；其余同前
     always_comb begin

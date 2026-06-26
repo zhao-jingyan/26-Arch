@@ -22,6 +22,8 @@ module Scoreboard_Unit (
     input  ID_2_CTRL  id_2_ctrl,
     input  EX_2_CTRL  ex_2_ctrl,
     input  MEM_2_CTRL mem_2_ctrl,
+    input  CSR_WRITE  ex_csr_write,
+    input  CSR_WRITE  mem_csr_write,
 
     output SCOREBOARD_2_CTRL scoreboard_2_ctrl
 );
@@ -72,5 +74,7 @@ module Scoreboard_Unit (
 
     assign scoreboard_2_ctrl.gpr_raw_hazard      = ex_raw_hazard;
     assign scoreboard_2_ctrl.id_direct_rs_hazard = id_direct_rs1_hazard || id_direct_rs2_hazard;
+    assign scoreboard_2_ctrl.csr_state_hazard    = id_2_ctrl.is_csr
+                                                && (ex_csr_write.write_en || mem_csr_write.write_en);
 
 endmodule

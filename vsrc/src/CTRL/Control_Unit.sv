@@ -76,6 +76,7 @@ module Control_Unit (
     logic req_data_stall;
     assign req_data_stall = scoreboard_2_ctrl.gpr_raw_hazard
                           || scoreboard_2_ctrl.id_direct_rs_hazard
+                          || scoreboard_2_ctrl.csr_state_hazard
                           || vector_raw_hazard
                           || vector_state_hazard;
 

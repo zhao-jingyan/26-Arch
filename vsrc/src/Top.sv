@@ -143,6 +143,8 @@ module Top (
         .id_2_ctrl          ( id_2_ctrl ),
         .ex_2_ctrl          ( ex_2_ctrl ),
         .mem_2_ctrl         ( mem_2_ctrl ),
+        .ex_csr_write       ( ex_csr_write ),
+        .mem_csr_write      ( mem_csr_write ),
         .scoreboard_2_ctrl  ( scoreboard_2_ctrl )
     );
 

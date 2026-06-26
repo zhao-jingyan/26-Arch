@@ -172,6 +172,7 @@ module EX_Stage (
                 trap_ctx_out.is_ecall  <= trap_ctx_in.is_ecall;
                 trap_ctx_out.is_mret   <= trap_ctx_in.is_mret;
                 trap_ctx_out.is_sret   <= trap_ctx_in.is_sret;
+                trap_ctx_out.is_sfence <= trap_ctx_in.is_sfence;
             end else begin
                 trap_ctx_out        <= trap_ctx_in;
             end

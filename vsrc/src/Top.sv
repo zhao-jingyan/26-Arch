@@ -51,7 +51,8 @@ module Top (
     output u64         gpr_o [0:31],
     output CSR_STATE   csr_state_o,     // CSR 快照：DifftestCSRState 字段表内的 9 个 CSR
     output PRIV_MODE   priv_mode_o,
-    output PRIV_MODE   mmu_priv_mode_o
+    output PRIV_MODE   mmu_priv_mode_o,
+    output logic       mmu_fence_o      // sfence.vma 提交：请求 MMU 刷新 TLB
 );
 
     // ------------------------------------------------------------------------
@@ -253,6 +254,7 @@ module Top (
             mmu_priv_mode = priv_mode_o;
     end
     assign mmu_priv_mode_o = mmu_priv_mode;
+    assign mmu_fence_o     = wb_trap_event.is_trap_commit && wb_trap_event.trap_ctx.is_sfence;
     assign kill_new_req    = priv_2_ctrl.is_trap_fire || priv_2_ctrl.is_mret_fire || priv_2_ctrl.is_sret_fire;
 
     IF_Stage u_if (

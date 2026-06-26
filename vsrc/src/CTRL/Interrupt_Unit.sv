@@ -69,7 +69,8 @@ module Interrupt_Unit (
     assign meip_pending = mip_full[11] && mie[11];
     assign msip_pending = mip_full[3]  && mie[3];
     assign mtip_pending = mip_full[7]  && mie[7];
-    assign seip_pending = mip_full[9]  && sie[9] && mideleg[9];
+    // 硬件 exint 接在 mip[11](MEIP)；当委托到 S 时按 SEIP 投递（仿照 MTIP→STIP）
+    assign seip_pending = (mip_full[9] || (mideleg[9] && mip_full[11])) && sie[9] && mideleg[9];
     assign ssip_pending = mip_full[1]  && sie[1] && mideleg[1];
     assign stip_pending = (mip_full[5] || (mideleg[5] && mip_full[7])) && sie[5] && mideleg[5];
 

@@ -26,6 +26,7 @@ module VTop
     CSR_STATE   csr_state;
     PRIV_MODE   priv_mode;
     PRIV_MODE   mmu_priv_mode;
+    logic       mmu_fence;
 
     cbus_req_t  icreq;
     cbus_resp_t icresp;
@@ -46,6 +47,7 @@ module VTop
         .csr_state_o(csr_state),
         .priv_mode_o(priv_mode),
         .mmu_priv_mode_o(mmu_priv_mode),
+        .mmu_fence_o(mmu_fence),
         .trint(trint),
         .swint(swint),
         .exint(exint)
@@ -76,7 +78,8 @@ module VTop
         .downstream_request(oreq),
         .downstream_response(oresp),
         .satp(csr_state.satp),
-        .priv_mode(mmu_priv_mode)
+        .priv_mode(mmu_priv_mode),
+        .flush_req(mmu_fence)
     );
 
 	always_ff @(posedge clk) begin

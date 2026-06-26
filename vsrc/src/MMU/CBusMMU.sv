@@ -26,7 +26,8 @@ module CBusMMU (
     input  cbus_resp_t downstream_response,
 
     input  u64         satp,
-    input  PRIV_MODE   priv_mode
+    input  PRIV_MODE   priv_mode,
+    input  logic       flush_req   // sfence.vma 提交脉冲：整表清空 TLB
 );
 
     typedef enum logic [2:0] {
@@ -46,6 +47,25 @@ module CBusMMU (
     u64        saved_satp;
     u64        pte;
     logic [1:0] leaf_level;  // 2=L2 1GiB，1=L1 2MiB，0=L0 4KiB
+
+    // ------------------------------------------------------------------------
+    // TLB：全相联，缓存「VPN(addr[38:12]) → PTE + leaf_level」
+    //   - 命中：跳过三级页表遍历，直接进入 ACCESS（权限/对齐仍按缓存 PTE 重判）
+    //   - 刷新：satp 变化（含每次 trap 切换内核/用户页表）或 sfence.vma 时整表清空
+    // ------------------------------------------------------------------------
+    localparam int unsigned TLB_N = 16;
+    logic [TLB_N-1:0]       tlb_valid;
+    logic [26:0]            tlb_tag  [TLB_N-1:0];
+    u64                     tlb_pte  [TLB_N-1:0];
+    logic [1:0]             tlb_leaf [TLB_N-1:0];
+    logic [$clog2(TLB_N)-1:0] tlb_repl;
+    u64                     satp_prev;
+
+    logic        tlb_hit;
+    u64          tlb_hit_pte;
+    logic [1:0]  tlb_hit_leaf;
+    logic [26:0] lookup_vpn;
+    logic        tlb_flush;  // 本拍需要整表清空
 
     logic is_virtual_priv;
     logic is_sv39_mode;
@@ -126,6 +146,24 @@ module CBusMMU (
         endcase
     end
 
+    // TLB 整表清空条件：satp 变化（地址空间切换）或 sfence.vma 提交
+    assign tlb_flush = (satp != satp_prev) || flush_req;
+
+    // TLB 查找：用当前 upstream_request 的 VPN 并行比较
+    assign lookup_vpn = upstream_request.addr[38:12];
+    always_comb begin
+        tlb_hit      = 1'b0;
+        tlb_hit_pte  = 64'b0;
+        tlb_hit_leaf = 2'b0;
+        for (int unsigned i = 0; i < TLB_N; i++) begin
+            if (tlb_valid[i] && (tlb_tag[i] == lookup_vpn)) begin
+                tlb_hit      = 1'b1;
+                tlb_hit_pte  = tlb_pte[i];
+                tlb_hit_leaf = tlb_leaf[i];
+            end
+        end
+    end
+
     always_comb begin
         downstream_request = '0;
         upstream_response  = '0;
@@ -165,12 +203,27 @@ module CBusMMU (
 
     always_ff @(posedge clk) begin
         if (~reset) begin
+            // 地址空间切换：整表清空（优先于本拍填充）
+            if (tlb_flush) begin
+                tlb_valid <= '0;
+                satp_prev <= satp;
+            end
+
             unique case (state)
                 IDLE: begin
                     if (upstream_request.valid) begin
                         saved_request <= upstream_request;
                         saved_satp    <= satp;
-                        state         <= should_translate ? WALK_L2 : PASSTHROUGH;
+                        if (!should_translate)
+                            state <= PASSTHROUGH;
+                        else if (tlb_hit && !tlb_flush) begin
+                            // TLB 命中：载入缓存 PTE，直接做实际访存
+                            pte        <= tlb_hit_pte;
+                            leaf_level <= tlb_hit_leaf;
+                            state      <= ACCESS;
+                        end
+                        else
+                            state <= WALK_L2;
                     end
                 end
                 PASSTHROUGH: begin
@@ -235,8 +288,17 @@ module CBusMMU (
                 WAIT: begin
                     if ((wait_resume_state == ACCESS) && access_fault)
                         state <= FAULT;
-                    else
+                    else begin
                         state <= wait_resume_state;
+                        // 走表成功解析出叶子 PTE，填入 TLB（本拍未发生地址空间切换时）
+                        if ((wait_resume_state == ACCESS) && !access_fault && !tlb_flush) begin
+                            tlb_valid[tlb_repl] <= 1'b1;
+                            tlb_tag[tlb_repl]   <= saved_request.addr[38:12];
+                            tlb_pte[tlb_repl]   <= pte;
+                            tlb_leaf[tlb_repl]  <= leaf_level;
+                            tlb_repl            <= tlb_repl + 1'b1;
+                        end
+                    end
                 end
                 default: begin
                     state <= IDLE;
@@ -250,6 +312,9 @@ module CBusMMU (
             saved_satp    <= '0;
             pte           <= '0;
             leaf_level    <= 2'd0;
+            tlb_valid     <= '0;
+            tlb_repl      <= '0;
+            satp_prev     <= '0;
         end
     end
 

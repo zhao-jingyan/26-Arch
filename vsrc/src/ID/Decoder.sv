@@ -48,6 +48,7 @@ module Decoder (
     output logic       is_ecall,
     output logic       is_mret,
     output logic       is_sret,
+    output logic       is_sfence,
     output logic       is_illegal
 );
 
@@ -103,6 +104,7 @@ module Decoder (
         is_ecall      = 1'b0;
         is_mret       = 1'b0;
         is_sret       = 1'b0;
+        is_sfence     = 1'b0;
         is_decoded    = 1'b0;
 
         unique case (opcode_w)
@@ -256,10 +258,12 @@ module Decoder (
                             FUNCT12_ECALL: begin is_ecall = 1'b1; is_decoded = 1'b1; end
                             FUNCT12_SRET:  begin is_sret  = 1'b1; is_decoded = 1'b1; end
                             FUNCT12_MRET:  begin is_mret  = 1'b1; is_decoded = 1'b1; end
-                            // sfence/fence/wfi 等：未实现但合法，当 NOP
+                            // sfence.vma（funct7=0001001）：触发 TLB 刷新；其余 wfi 等当 NOP
                             default: begin
                                 rd_src     = RD_FROM_ALU;
                                 is_decoded = 1'b1;
+                                if (inst[31:25] == 7'b0001001)
+                                    is_sfence = 1'b1;
                             end
                         endcase
                     end

@@ -17,6 +17,7 @@ module core import common::*; import top_pkg::*; import CSR_PKG::*; (
 	output CSR_STATE   csr_state_o,
 	output PRIV_MODE   priv_mode_o,
 	output PRIV_MODE   mmu_priv_mode_o,
+	output logic       mmu_fence_o,
 	input  logic       trint, swint, exint
 );
 
@@ -57,7 +58,8 @@ module core import common::*; import top_pkg::*; import CSR_PKG::*; (
 		.gpr_o          ( gpr ),
 		.csr_state_o    ( csr_state ),
 		.priv_mode_o    ( priv_mode ),
-		.mmu_priv_mode_o( mmu_priv_mode )
+		.mmu_priv_mode_o( mmu_priv_mode ),
+		.mmu_fence_o    ( mmu_fence_o )
 	);
 
 	assign csr_state_o      = csr_state;

@@ -80,6 +80,7 @@ module ID_Stage (
     logic       dec_is_ecall;
     logic       dec_is_mret;
     logic       dec_is_sret;
+    logic       dec_is_sfence;
     logic       dec_is_illegal;
     CSR_OP      dec_csr_op;
     u12         dec_csr_addr;
@@ -140,6 +141,7 @@ module ID_Stage (
         .is_ecall      ( dec_is_ecall ),
         .is_mret       ( dec_is_mret ),
         .is_sret       ( dec_is_sret ),
+        .is_sfence     ( dec_is_sfence ),
         .is_illegal    ( dec_is_illegal )
     );
 
@@ -293,6 +295,7 @@ module ID_Stage (
             trap_ctx.is_ecall  <= dec_is_ecall;
             trap_ctx.is_mret   <= dec_is_mret;
             trap_ctx.is_sret   <= dec_is_sret;
+            trap_ctx.is_sfence <= dec_is_sfence;
             if (if_2_id.fetch_exc_valid) begin
                 trap_ctx.exc_valid <= 1'b1;
                 trap_ctx.exc_cause <= if_2_id.fetch_exc_cause;

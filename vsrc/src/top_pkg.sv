@@ -60,6 +60,7 @@ package top_pkg;
         logic is_ecall;
         logic is_mret;
         logic is_sret;
+        logic is_sfence;
         logic exc_valid;
         u64   exc_cause;
         u64   exc_tval;

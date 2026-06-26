@@ -2,12 +2,8 @@
 
 no_arguments:
 	@echo "Please specify a target to build"
-	@echo "  - init: Initialize submodules"
 	@echo "  - handin: Create a zip file for handin"
 	@echo "  - test-lab1: Run lab1 test"
-
-init:
-	git submodule update --init --recursive
 
 handin:
 	@report_found=""; \

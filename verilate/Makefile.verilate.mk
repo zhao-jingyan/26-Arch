@@ -57,13 +57,7 @@ SV_FLAGS += \
 endif
 
 ifeq ($(VSIM_OPT),1)
-SV_FLAGS += -CFLAGS -O3
-
-# clang 10 has issue with LTO and ar.
-ifneq ($(USE_CLANG),1)
-SV_FLAGS += -CFLAGS -flto
-endif
-
+SV_FLAGS += $(foreach f,$(VSIM_OPT_FLAG_LIST),-CFLAGS $(f))
 endif
 
 ifeq ($(WITH_XPM),1)

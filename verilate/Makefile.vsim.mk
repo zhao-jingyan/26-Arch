@@ -66,7 +66,10 @@ CXXFLAGS += -stdlib=libc++ -Wno-unknown-warning-option
 endif
 
 ifeq ($(VSIM_OPT),1)
-CXXFLAGS += -O2 -march=native -flto
+CXXFLAGS += $(VSIM_OPT_FLAGS)
+ifeq ($(VSIM_LTO),1)
+CXX_LINKS += -flto
+endif
 endif
 
 ifeq ($(VSIM_SANITIZE),1)

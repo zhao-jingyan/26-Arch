@@ -58,6 +58,10 @@ module Interrupt_Unit (
     logic s_global_en;
     logic m_int_pending;
     logic s_int_pending;
+    logic meip_to_m;
+    logic msip_to_m;
+    logic mtip_to_m;
+    logic m_int_pending_to_m;
     logic anchor_valid;
     logic block_fire;
     logic fire_cond;
@@ -81,6 +85,12 @@ module Interrupt_Unit (
     assign m_int_pending = meip_pending || msip_pending || mtip_pending;
     assign s_int_pending = seip_pending || ssip_pending || stip_pending;
 
+    // U/S 态下未委托的 M 目标中断仍 trap 到 M（lab6 用户态 wait 依赖 MTI/MSI）
+    assign meip_to_m = meip_pending && !mideleg[11];
+    assign msip_to_m = msip_pending && !mideleg[3];
+    assign mtip_to_m = mtip_pending && !mideleg[7];
+    assign m_int_pending_to_m = meip_to_m || msip_to_m || mtip_to_m;
+
     // 锚定点必须是一条「干净可重放」的有效 MEM 段指令：
     //   - inst != 0：非气泡
     //   - 非原子/向量访存多拍执行中：避免打断在途访存事务
@@ -94,9 +104,10 @@ module Interrupt_Unit (
     assign block_fire = wb_event_active
                      || (wb_commit_valid && wb_csr_write.write_en);
 
-    // 触发条件：M 态只投递 M 目标中断；非 M 态投递委托到 S 的中断
-    assign fire_cond = (priv_mode == PRIV_M) ? (global_en   && m_int_pending)
-                                             : (s_global_en && s_int_pending);
+    // 触发条件：M 态投递 M 目标；U/S 态投递委托到 S 的 + 未委托仍进 M 的
+    assign fire_cond = (priv_mode == PRIV_M) ? (global_en && m_int_pending)
+                                             : ((s_global_en && s_int_pending)
+                                             || (global_en && m_int_pending_to_m));
 
     assign int_fire = anchor_valid && !block_fire && fire_cond;
 
@@ -110,7 +121,10 @@ module Interrupt_Unit (
             else if (msip_pending) int_mcause = MCAUSE_MSI;
             else                   int_mcause = MCAUSE_MTI;
         end else begin
-            if (seip_pending)      int_mcause = MCAUSE_SEI;
+            if (meip_to_m)         int_mcause = MCAUSE_MEI;
+            else if (msip_to_m)    int_mcause = MCAUSE_MSI;
+            else if (mtip_to_m)    int_mcause = MCAUSE_MTI;
+            else if (seip_pending) int_mcause = MCAUSE_SEI;
             else if (ssip_pending) int_mcause = MCAUSE_SSI;
             else                   int_mcause = MCAUSE_STI;
         end

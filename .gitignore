@@ -1,5 +1,4 @@
 **/build/
-difftest/*
 .history/*
 *.log
 *.fst

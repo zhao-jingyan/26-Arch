@@ -1,6 +1,14 @@
 // ----------------------------------------------------------------------------
 // File        : Interrupt_Unit.sv
-// Description : 三类 M 模式中断聚合：硬件 mip 位 + 信号变化 / 延迟投递 evaluate
+// Description : M/S 模式中断聚合与精确投递
+//               关键修复：中断改为「组合触发 + 锚定 MEM 段指令」的精确异步 trap。
+//                 - epc = MEM 段指令（ex_inst_ctx）的 PC：它是下一条将提交的指令，
+//                   比 WB 段更年轻、比 EX/ID/IF 更老。
+//                 - 触发当拍复用既有异常 flush 掩码 {IF/ID, EX, MEM}：
+//                   砍掉 MEM 段（=epc，随后重放）及更年轻指令，放行更老的 WB 段提交；
+//                   kill_new_req 同拍抑制 MEM 段 store 发起，保证重放不二次写存储。
+//               旧实现把 int_fire 寄存一拍、用固定 flush 掩码命中错位指令，会静默丢一条
+//               比 epc 更老的指令（用户态 a0 损坏 / push_off 清 SIE 失效），此处一并消除。
 // ----------------------------------------------------------------------------
 
 `ifdef VERILATOR
@@ -13,9 +21,6 @@ import top_pkg::*;
 import CSR_PKG::*;
 
 module Interrupt_Unit (
-    input  logic     clk,
-    input  logic     rst_n,
-
     input  logic     trint,
     input  logic     swint,
     input  logic     exint,
@@ -26,16 +31,13 @@ module Interrupt_Unit (
     input  u64       sie,
     input  u64       mideleg,
     input  PRIV_MODE priv_mode,
-    input  u64       if_pc,
-    input  IF_2_ID   if_2_id,
+
+    // MEM 段指令上下文（EX/MEM 寄存器输出）：作为中断锚定点
     input  INST_CTX  ex_inst_ctx,
-    input  INST_CTX  mem_inst_ctx,
     input  MEM_2_CTRL mem_2_ctrl,
 
-    input  logic     trap_write_en,
-    input  u64       trap_mstatus_next,
-    input  CSR_WRITE ex_csr_write,
-    input  CSR_WRITE mem_csr_write,
+    // WB 段事件 / 提交信息：用于优先级与写口冲突屏蔽（均来自寄存器，不含 int_fire，避免组合环）
+    input  logic     wb_event_active,   // WB 段正在 exc/ecall/mret/sret（来自 Privilege_Unit）
     input  CSR_WRITE wb_csr_write,
     input  logic     wb_commit_valid,
 
@@ -45,19 +47,6 @@ module Interrupt_Unit (
     output u64       int_epc
 );
 
-    logic prev_trint;
-    logic prev_swint;
-    logic prev_exint;
-    logic pending_latched;
-    logic int_changed;
-    logic global_en;
-    logic int_pending;
-    logic int_take;
-    logic mie_open_commit;
-    logic mtip_take_m;
-    logic other_int_take;
-    u64   irq_pc;
-    u64   mstatus_eff;
     u64   mip_full;
     logic meip_pending;
     logic msip_pending;
@@ -65,123 +54,64 @@ module Interrupt_Unit (
     logic seip_pending;
     logic ssip_pending;
     logic stip_pending;
+    logic global_en;
     logic s_global_en;
+    logic m_int_pending;
     logic s_int_pending;
-    logic csr_write_inflight;
+    logic anchor_valid;
+    logic block_fire;
+    logic fire_cond;
 
-    assign mip_hw = (64'(exint) << 11) | (64'(trint) << 7) | (64'(swint) << 3);
+    assign mip_hw  = (64'(exint) << 11) | (64'(trint) << 7) | (64'(swint) << 3);
     assign mip_full = mip_sw | mip_hw;
 
-    assign int_changed = (trint != prev_trint)
-                      || (swint != prev_swint)
-                      || (exint != prev_exint);
-
-    // WB 提交 mstatus/sstatus 当拍即参与判定，避免刚关闭 SIE 后仍投递 S-mode 中断。
-    always_comb begin
-        mstatus_eff = mstatus;
-        if (trap_write_en)
-            mstatus_eff = trap_mstatus_next;
-        else if (wb_commit_valid
-                 && wb_csr_write.write_en
-                 && (wb_csr_write.write_addr == CSR_MSTATUS))
-            mstatus_eff = (wb_csr_write.write_data & MSTATUS_MASK)
-                        | (mstatus & ~MSTATUS_MASK);
-        else if (wb_commit_valid
-                 && wb_csr_write.write_en
-                 && (wb_csr_write.write_addr == CSR_SSTATUS))
-            mstatus_eff = sstatus_to_mstatus(wb_csr_write.write_data, mstatus);
-    end
-
-    assign global_en    = (priv_mode != PRIV_M) || mstatus_get_mie(mstatus_eff);
+    // 各中断源 pending（已按使能位/委托位过滤）
     assign meip_pending = mip_full[11] && mie[11];
     assign msip_pending = mip_full[3]  && mie[3];
     assign mtip_pending = mip_full[7]  && mie[7];
     assign seip_pending = mip_full[9]  && sie[9] && mideleg[9];
     assign ssip_pending = mip_full[1]  && sie[1] && mideleg[1];
     assign stip_pending = (mip_full[5] || (mideleg[5] && mip_full[7])) && sie[5] && mideleg[5];
-    assign s_global_en  = (priv_mode == PRIV_U) || ((priv_mode == PRIV_S) && mstatus_get_sie(mstatus_eff));
+
+    // 全局使能：M 目标中断在 priv<M 时恒开、priv==M 看 MIE；S 目标中断 priv==U 恒开、priv==S 看 SIE
+    assign global_en   = (priv_mode != PRIV_M) || mstatus_get_mie(mstatus);
+    assign s_global_en = (priv_mode == PRIV_U) || ((priv_mode == PRIV_S) && mstatus_get_sie(mstatus));
+
+    assign m_int_pending = meip_pending || msip_pending || mtip_pending;
     assign s_int_pending = seip_pending || ssip_pending || stip_pending;
-    assign int_pending  = meip_pending || msip_pending || mtip_pending;
-    assign csr_write_inflight = ex_csr_write.write_en
-                              || mem_csr_write.write_en
-                              || (wb_commit_valid && wb_csr_write.write_en)
-                              || trap_write_en;
 
-    // csrsi 在 WB 提交开 MIE 的唯一窗口
-    assign mie_open_commit = wb_commit_valid
-                          && wb_csr_write.write_en
-                          && (wb_csr_write.write_addr == CSR_MSTATUS)
-                          && wb_csr_write.write_data[MSTATUS_MIE_BIT];
+    // 锚定点必须是一条「干净可重放」的有效 MEM 段指令：
+    //   - inst != 0：非气泡
+    //   - 非原子/向量访存多拍执行中：避免打断在途访存事务
+    assign anchor_valid = (ex_inst_ctx.inst != 32'b0)
+                       && !mem_2_ctrl.is_atomic_busy
+                       && !mem_2_ctrl.is_vmem_busy;
 
-    // M 模式 MTIP：仅在 MIE 打开当拍投递，避免 int_changed 在错误流水阶段取 epc
-    assign mtip_take_m = (priv_mode == PRIV_M)
-                      && mtip_pending
-                      && mie_open_commit
-                      && (pending_latched || (trint != prev_trint));
+    // 屏蔽当拍触发的两种情形：
+    //   1. WB 段本拍已在做异常/ecall/mret/sret（更老、优先级更高，让它先走）
+    //   2. WB 段本拍提交一条 CSR 写：trap 写口与软件 CSR 写会争用 CSRFile，trap 优先会吞掉软件写
+    assign block_fire = wb_event_active
+                     || (wb_commit_valid && wb_csr_write.write_en);
 
-    assign other_int_take = global_en
-                         && (meip_pending || msip_pending)
-                         && (int_changed || pending_latched);
+    // 触发条件：M 态只投递 M 目标中断；非 M 态投递委托到 S 的中断
+    assign fire_cond = (priv_mode == PRIV_M) ? (global_en   && m_int_pending)
+                                             : (s_global_en && s_int_pending);
 
-    assign int_take = !mem_2_ctrl.is_atomic_busy
-                    && !csr_write_inflight
-                    && ((priv_mode == PRIV_M)
-                        ? (mtip_take_m || other_int_take)
-                        : (s_global_en && s_int_pending && (int_changed || pending_latched)));
+    assign int_fire = anchor_valid && !block_fire && fire_cond;
 
-    // M 模式 MTIP：被中断指令为 csrsi 下一条（mem+4）；其余同前
+    // epc 锚定 MEM 段指令：trap 返回后从该指令重新执行
+    assign int_epc  = ex_inst_ctx.pc_inst_address;
+
+    // mcause 优先级编码：外部 > 软件 > 定时；M 目标优先于 S 目标
     always_comb begin
-        if (mie_open_commit && mtip_pending && (priv_mode == PRIV_M))
-            irq_pc = mem_inst_ctx.pc_inst_address + 64'd4;
-        else if ((priv_mode == PRIV_M) && (ex_inst_ctx.inst != 32'b0))
-            irq_pc = ex_inst_ctx.pc_inst_address;
-        else if (if_2_id.inst != 32'b0)
-            irq_pc = if_2_id.pc_inst_address;
-        else
-            irq_pc = if_pc;
-    end
-
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            int_fire        <= 1'b0;
-            int_mcause      <= 64'b0;
-            int_epc         <= 64'b0;
-            pending_latched <= 1'b0;
+        if (priv_mode == PRIV_M) begin
+            if (meip_pending)      int_mcause = MCAUSE_MEI;
+            else if (msip_pending) int_mcause = MCAUSE_MSI;
+            else                   int_mcause = MCAUSE_MTI;
         end else begin
-            int_fire <= int_take;
-
-            if (int_take) begin
-                int_epc <= irq_pc;
-                if (meip_pending)
-                    int_mcause <= MCAUSE_MEI;
-                else if (msip_pending)
-                    int_mcause <= MCAUSE_MSI;
-                else if (seip_pending)
-                    int_mcause <= MCAUSE_SEI;
-                else if (ssip_pending)
-                    int_mcause <= MCAUSE_SSI;
-                else if (stip_pending)
-                    int_mcause <= MCAUSE_STI;
-                else
-                    int_mcause <= MCAUSE_MTI;
-            end
-
-            if (int_take)
-                pending_latched <= 1'b0;
-            else if ((int_pending && !global_en) || (s_int_pending && !s_global_en))
-                pending_latched <= 1'b1;
-        end
-    end
-
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            prev_trint <= 1'b0;
-            prev_swint <= 1'b0;
-            prev_exint <= 1'b0;
-        end else begin
-            prev_trint <= trint;
-            prev_swint <= swint;
-            prev_exint <= exint;
+            if (seip_pending)      int_mcause = MCAUSE_SEI;
+            else if (ssip_pending) int_mcause = MCAUSE_SSI;
+            else                   int_mcause = MCAUSE_STI;
         end
     end
 

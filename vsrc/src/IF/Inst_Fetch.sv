@@ -49,8 +49,11 @@ module Inst_Fetch (
     assign fetch_exc_valid = is_inst_ready && latched_exc_valid;
     assign fetch_exc_cause = latched_exc_cause;
     assign fetch_exc_tval  = latched_exc_tval;
-    assign request_valid = pending_valid || !is_inst_ready;
-    assign request_addr  = pending_valid ? pending_addr : pc_inst_address;
+    // 仅在已寄存的 pending 下向总线发起请求：消除未被追踪的“发起拍”，
+    // 保证每一笔进总线的事务都在 pending_kill 追踪内，flush 时可正确丢弃，
+    // 避免仲裁器中残留的旧请求响应被错配为新 PC 的指令。
+    assign request_valid = pending_valid;
+    assign request_addr  = pending_addr;
     assign response_matches_pc = pending_valid && (pending_addr == pc_inst_address);
 
     assign inst_word = pending_addr[2] ? response_data[63:32] : response_data[31:0];

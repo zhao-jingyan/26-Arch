@@ -42,7 +42,10 @@ module Privilege_Unit (
     output u64           trap_stval_next,
 
     output PRIV_2_CTRL   priv_2_ctrl,
-    output PRIV_MODE     priv_mode
+    output PRIV_MODE     priv_mode,
+
+    // 仅由 WB 段已提交事件决定（不含 int_fire），供 Interrupt_Unit 做优先级屏蔽、打破组合环
+    output logic         wb_event_active
 );
 
     PRIV_MODE priv_mode_q;
@@ -146,6 +149,8 @@ module Privilege_Unit (
             trap_mstatus_next = sret_mstatus_w;
         end
     end
+
+    assign wb_event_active = is_wb_trap_fire || is_mret_fire || is_sret_fire;
 
     assign priv_2_ctrl.is_trap_fire = is_trap_fire;
     assign priv_2_ctrl.is_mret_fire = is_mret_fire;

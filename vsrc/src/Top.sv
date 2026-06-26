@@ -181,10 +181,9 @@ module Top (
         .pc_jump_address    ( pc_jump_address )
     );
 
-    Interrupt_Unit u_int (
-        .clk        ( clk ),
-        .rst_n      ( rst_n ),
+    logic priv_wb_event_active;
 
+    Interrupt_Unit u_int (
         .trint      ( trint ),
         .swint      ( swint ),
         .exint      ( exint ),
@@ -195,18 +194,13 @@ module Top (
         .sie        ( csr_state_o.sie ),
         .mideleg    ( csr_state_o.mideleg ),
         .priv_mode  ( priv_mode_o ),
-        .if_pc      ( if_pc ),
-        .if_2_id    ( if_2_id ),
+
         .ex_inst_ctx( ex_inst_ctx ),
-        .mem_inst_ctx( mem_inst_ctx ),
         .mem_2_ctrl ( mem_2_ctrl ),
 
-        .trap_write_en      ( trap_write_en ),
-        .trap_mstatus_next  ( trap_mstatus_next ),
-        .ex_csr_write       ( ex_csr_write ),
-        .mem_csr_write      ( mem_csr_write ),
-        .wb_csr_write       ( wb_2_csr ),
-        .wb_commit_valid    ( wb_commit_valid ),
+        .wb_event_active ( priv_wb_event_active ),
+        .wb_csr_write    ( wb_2_csr ),
+        .wb_commit_valid ( wb_commit_valid ),
 
         .mip_hw     ( mip_hw ),
         .int_fire   ( int_fire ),
@@ -244,7 +238,8 @@ module Top (
         .trap_stval_next     ( trap_stval_next ),
 
         .priv_2_ctrl         ( priv_2_ctrl ),
-        .priv_mode           ( priv_mode_o )
+        .priv_mode           ( priv_mode_o ),
+        .wb_event_active     ( priv_wb_event_active )
     );
 
     always_comb begin

@@ -4,10 +4,11 @@
 `ifdef VERILATOR
 `include "include/common.sv"
 `include "src/top_pkg.sv"
+`include "src/ID/CSR_PKG.sv"
 `include "src/Top.sv"
 `endif
 
-module core import common::*; import top_pkg::*; (
+module core import common::*; import top_pkg::*; import CSR_PKG::*; (
 	input  logic       clk, reset,
 	output ibus_req_t  ireq,
 	input  ibus_resp_t iresp,
@@ -144,10 +145,9 @@ module core import common::*; import top_pkg::*; (
 		.instrCnt           (difftest_instr_cnt)
 	);
 
-	// sstatus 是 mstatus 的子集视图，物理上不单独保存，按 mask 抽取即可
-	// SSTATUS_MASK = 64'h800000030001e000（与 include/csr.sv 一致）
+	// sstatus 是 mstatus 的子集视图，掩码与 CSR_PKG.SSTATUS_MASK 一致
 	word_t sstatus;
-	assign sstatus = csr_state.mstatus & 64'h800000030001e000;
+	assign sstatus = csr_state.mstatus & SSTATUS_MASK;
 
 	DifftestCSRState DifftestCSRState(
 		.clock              (clk),
